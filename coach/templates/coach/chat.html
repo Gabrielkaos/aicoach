@@ -1,0 +1,86 @@
+{% extends "coach/base.html" %}
+{% block title %}Chat - AI Coach{% endblock %}
+{% block content %}
+
+<div class="card p-6 flex flex-col h-[75vh]">
+  <div class="flex items-center justify-between mb-4">
+    <h1 class="text-lg font-semibold">Ask your coach</h1>
+    <form method="post" action="{% url 'chat_clear' %}" onsubmit="return confirm('Clear chat history?')">
+      {% csrf_token %}
+      <button class="text-xs text-red-400 hover:underline">clear chat</button>
+    </form>
+  </div>
+
+  <div id="chat-log" class="flex-1 overflow-y-auto space-y-3 pr-2 mb-4">
+    {% for m in chat_history %}
+      <div class="flex {% if m.role == 'user' %}justify-end{% else %}justify-start{% endif %}">
+        <div class="max-w-[75%] rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap
+          {% if m.role == 'user' %}bg-emerald-600 text-white{% else %}bg-slate-100 text-slate-800{% endif %}">
+          {{ m.content }}
+        </div>
+      </div>
+    {% empty %}
+      <p class="text-slate-400 text-sm">Try: "How am I feeling today, and what should my workout be?"</p>
+    {% endfor %}
+  </div>
+
+  <form id="chat-form" class="flex gap-2">
+    <input id="chat-input" type="text" placeholder="Ask about today's training..."
+      class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" autocomplete="off">
+    <button id="chat-submit" class="bg-emerald-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700">
+      Send
+    </button>
+  </form>
+</div>
+
+<script>
+const chatLog = document.getElementById('chat-log');
+const chatForm = document.getElementById('chat-form');
+const chatInput = document.getElementById('chat-input');
+const chatSubmit = document.getElementById('chat-submit');
+
+function appendBubble(role, text) {
+  const wrap = document.createElement('div');
+  wrap.className = 'flex ' + (role === 'user' ? 'justify-end' : 'justify-start');
+  const bubble = document.createElement('div');
+  bubble.className = 'max-w-[75%] rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap ' +
+    (role === 'user' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-800');
+  bubble.textContent = text;
+  wrap.appendChild(bubble);
+  chatLog.appendChild(wrap);
+  chatLog.scrollTop = chatLog.scrollHeight;
+  return wrap;
+}
+
+chatForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const text = chatInput.value.trim();
+  if (!text) return;
+  chatInput.value = '';
+  chatSubmit.disabled = true;
+  appendBubble('user', text);
+  const thinking = appendBubble('assistant', 'Thinking...');
+
+  try {
+    const resp = await fetch("{% url 'chat_send' %}", {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-CSRFToken': '{{ csrf_token }}',
+      },
+      body: new URLSearchParams({ message: text }),
+    });
+    const data = await resp.json();
+    thinking.remove();
+    appendBubble('assistant', data.reply || data.error || 'No response.');
+  } catch (err) {
+    thinking.remove();
+    appendBubble('assistant', 'Something went wrong sending that message.');
+  } finally {
+    chatSubmit.disabled = false;
+    chatInput.focus();
+  }
+});
+</script>
+
+{% endblock %}

@@ -1,0 +1,100 @@
+{% extends "coach/base.html" %}
+{% block title %}Dashboard - AI Coach{% endblock %}
+{% block content %}
+
+<div class="grid md:grid-cols-2 gap-6">
+
+  <div class="card p-6">
+    <h2 class="text-lg font-semibold mb-4">Log today's metrics</h2>
+    <form method="post">
+      {% csrf_token %}
+      <div class="grid grid-cols-2 gap-3">
+        {% for field in form %}
+          <div class="{% if field.name == 'notes' %}col-span-2{% endif %}">
+            <label class="block text-xs font-medium text-slate-500 mb-1">{{ field.label }}</label>
+            {{ field }}
+          </div>
+        {% endfor %}
+      </div>
+      <button class="mt-4 bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700">
+        Save metrics
+      </button>
+    </form>
+  </div>
+
+  <div class="card p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold">Strava</h2>
+      {% if strava_connected %}
+        <span class="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full">Connected</span>
+      {% endif %}
+    </div>
+    {% if strava_connected %}
+      <p class="text-sm text-slate-500 mb-3">Pull your latest activities in.</p>
+      <a href="{% url 'strava_sync' %}" class="inline-block bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-600">
+        Sync recent activities
+      </a>
+    {% else %}
+      <p class="text-sm text-slate-500 mb-3">Connect your Strava account to pull in completed activities automatically.</p>
+      <a href="{% url 'strava_connect' %}" class="inline-block bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-600">
+        Connect Strava
+      </a>
+    {% endif %}
+    <hr class="my-4">
+    <h3 class="text-sm font-semibold mb-2">Recent activities</h3>
+    <ul class="text-sm space-y-1 max-h-48 overflow-y-auto">
+      {% for a in recent_activities %}
+        <li class="flex justify-between border-b border-slate-100 py-1">
+          <span>{{ a.start_date|date:"M d" }} — {{ a.activity_type }}</span>
+          <span class="text-slate-500">{{ a.distance_km|floatformat:1 }}km · {{ a.moving_time_min|floatformat:0 }}min</span>
+        </li>
+      {% empty %}
+        <li class="text-slate-400">No activities yet.</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+</div>
+
+<div class="card p-6 mt-6">
+  <h2 class="text-lg font-semibold mb-4">Recent metrics</h2>
+  <div class="overflow-x-auto">
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="text-left text-slate-500 border-b">
+        <th class="py-2 pr-4">Date</th>
+        <th class="py-2 pr-4">HRV</th>
+        <th class="py-2 pr-4">RHR</th>
+        <th class="py-2 pr-4">Sleep</th>
+        <th class="py-2 pr-4">Notes</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in recent_metrics %}
+      <tr class="border-b border-slate-50">
+        <td class="py-2 pr-4 font-medium">{{ m.date }}</td>
+        <td class="py-2 pr-4">{{ m.hrv|default:"—" }}</td>
+        <td class="py-2 pr-4">{{ m.rhr|default:"—" }}</td>
+        <td class="py-2 pr-4">{{ m.sleep_hours|default:"—" }}h</td>
+        <td class="py-2 pr-4 text-slate-500">{{ m.notes|truncatechars:40 }}</td>
+        <td class="py-2 text-right">
+          <a href="{% url 'metric_delete' m.pk %}" class="text-red-400 hover:text-red-600 text-xs"
+             onclick="return confirm('Delete this entry?')">delete</a>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="py-4 text-slate-400">No metrics logged yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="mt-6 text-center">
+  <a href="{% url 'chat' %}" class="inline-block bg-slate-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-slate-800">
+    💬 Ask your AI coach what to do today
+  </a>
+</div>
+
+{% endblock %}

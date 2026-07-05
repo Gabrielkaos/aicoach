@@ -1,0 +1,31 @@
+{% extends "coach/base.html" %}
+{% block title %}Import CSV - AI Coach{% endblock %}
+{% block content %}
+
+<div class="card p-6 max-w-xl mx-auto">
+  <h1 class="text-lg font-semibold mb-2">Import metrics from CSV</h1>
+  <p class="text-sm text-slate-500 mb-4">
+    Zepp doesn't offer a public API, so there's no way to live-sync it. You can request your data
+    export from the Zepp/Mi Fit app (Profile → Privacy → Export/download your data, or a GDPR request
+    from Zepp's site) and upload the resulting CSV here. Tell me which columns hold which metric —
+    export formats vary between app versions.
+  </p>
+
+  <form method="post" enctype="multipart/form-data" class="space-y-3">
+    {% csrf_token %}
+    {% for field in form %}
+      <div>
+        <label class="block text-xs font-medium text-slate-500 mb-1">{{ field.label }}</label>
+        {{ field }}
+        {% if field.help_text %}<p class="text-xs text-slate-400 mt-1">{{ field.help_text }}</p>{% endif %}
+      </div>
+    {% endfor %}
+    <button class="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700">
+      Import
+    </button>
+  </form>
+
+  {% if result %}<p class="mt-4 text-sm text-emerald-700">{{ result }}</p>{% endif %}
+</div>
+
+{% endblock %}

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}AI Coach{% endblock %}</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: 'Inter', system-ui, sans-serif; }
+  .card { background: white; border-radius: 0.75rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+</style>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800">
+<nav class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+  <a href="{% url 'dashboard' %}" class="font-bold text-lg">🏃 AI Coach</a>
+  <div class="space-x-4 text-sm">
+    <a href="{% url 'dashboard' %}" class="hover:text-emerald-400">Dashboard</a>
+    <a href="{% url 'calendar' %}" class="hover:text-emerald-400">Calendar</a>
+    <a href="{% url 'chat' %}" class="hover:text-emerald-400">Chat</a>
+    <a href="{% url 'zepp_import' %}" class="hover:text-emerald-400">Import CSV</a>
+    <a href="{% url 'gpx_upload' %}" class="hover:text-emerald-400">Import GPX</a>
+    <a href="/admin/" class="hover:text-emerald-400">Admin</a>
+  </div>
+</nav>
+
+<div class="max-w-5xl mx-auto px-4 py-6">
+  {% if messages %}
+    {% for message in messages %}
+      <div class="mb-4 px-4 py-2 rounded-lg text-sm {% if message.tags == 'error' %}bg-red-100 text-red-700{% else %}bg-emerald-100 text-emerald-700{% endif %}">
+        {{ message }}
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  {% block content %}{% endblock %}
+</div>
+</body>
+</html>

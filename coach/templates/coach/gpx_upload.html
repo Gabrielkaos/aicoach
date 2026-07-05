@@ -1,0 +1,26 @@
+{% extends "coach/base.html" %}
+{% block title %}Import GPX - AI Coach{% endblock %}
+{% block content %}
+
+<div class="card p-6 max-w-xl mx-auto">
+  <h1 class="text-lg font-semibold mb-2">Import activities from GPX</h1>
+  <p class="text-sm text-slate-500 mb-4">
+    Upload GPX files exported from Zepp (or Strava, Garmin, etc). Distance, moving time, elevation
+    gain, and heart rate (when the file includes it) are extracted automatically and added to your
+    activity history, so the coach can see your real training load in chat.
+  </p>
+
+  <form method="post" enctype="multipart/form-data" class="space-y-3">
+    {% csrf_token %}
+    <div>
+      <label class="block text-xs font-medium text-slate-500 mb-1">{{ form.gpx_files.label }}</label>
+      {{ form.gpx_files }}
+      <p class="text-xs text-slate-400 mt-1">{{ form.gpx_files.help_text }}</p>
+    </div>
+    <button class="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700">
+      Upload &amp; import
+    </button>
+  </form>
+</div>
+
+{% endblock %}
