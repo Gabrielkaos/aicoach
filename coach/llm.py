@@ -260,6 +260,7 @@ def call_llm(messages):
         "messages": messages,
         "temperature": 0.6,
         "max_tokens": 1600,
+        "reasoning_effort":"high"
     }
     try:
         resp = requests.post(url, headers=headers, json=payload, timeout=30)
