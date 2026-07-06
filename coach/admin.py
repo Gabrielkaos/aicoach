@@ -1,8 +1,10 @@
 from django.contrib import admin
-from .models import DailyMetric, Activity, Workout, ChatMessage, StravaToken
+from .models import DailyMetric, ActiveCondition, Workout, ChatMessage, ChatSession, AthleteProfile, Goal
 
 admin.site.register(DailyMetric)
-admin.site.register(Activity)
+admin.site.register(ActiveCondition)
 admin.site.register(Workout)
 admin.site.register(ChatMessage)
-admin.site.register(StravaToken)
+admin.site.register(ChatSession)
+admin.site.register(AthleteProfile)
+admin.site.register(Goal)

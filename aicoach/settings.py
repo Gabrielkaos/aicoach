@@ -76,8 +76,4 @@ LLM_API_BASE = os.environ.get("LLM_API_BASE", "https://api.groq.com/openai/v1")
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
 LLM_MODEL = os.environ.get("LLM_MODEL", "llama-3.3-70b-versatile")
 
-STRAVA_CLIENT_ID = os.environ.get("STRAVA_CLIENT_ID", "")
-STRAVA_CLIENT_SECRET = os.environ.get("STRAVA_CLIENT_SECRET", "")
-STRAVA_REDIRECT_URI = os.environ.get("STRAVA_REDIRECT_URI", "http://127.0.0.1:8000/strava/callback/")
-
 LOGIN_URL = "/admin/login/"

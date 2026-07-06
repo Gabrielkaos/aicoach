@@ -1,4 +1,4 @@
-"""Parses uploaded GPX files into Activity-model-shaped dicts.
+"""Parses uploaded GPX files into calendar-Workout-shaped dicts.
 
 Heart rate lives in vendor extensions (most commonly Garmin's TrackPointExtension,
 namespaced differently depending on the device/app that produced the file), so we

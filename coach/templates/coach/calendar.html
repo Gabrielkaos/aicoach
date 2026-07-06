@@ -24,6 +24,13 @@
               </div>
               {% if w.workout_type %}<div class="text-slate-400">{{ w.workout_type }}</div>{% endif %}
               {% if w.description %}<div class="text-slate-500 mt-1">{{ w.description }}</div>{% endif %}
+              {% if w.distance_km or w.moving_time_min or w.avg_hr %}
+                <div class="text-slate-400 mt-1">
+                  {% if w.distance_km %}{{ w.distance_km|floatformat:1 }}km{% endif %}
+                  {% if w.moving_time_min %} · {{ w.moving_time_min|floatformat:0 }}min{% endif %}
+                  {% if w.avg_hr %} · hr {{ w.avg_hr|floatformat:0 }}{% endif %}
+                </div>
+              {% endif %}
               <div class="flex gap-2 mt-2">
                 <form method="post" action="{% url 'workout_set_status' w.pk %}">
                   {% csrf_token %}

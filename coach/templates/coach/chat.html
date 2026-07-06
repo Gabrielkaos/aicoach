@@ -2,35 +2,97 @@
 {% block title %}Chat - AI Coach{% endblock %}
 {% block content %}
 
-<div class="card p-6 flex flex-col h-[75vh]">
-  <div class="flex items-center justify-between mb-4">
-    <h1 class="text-lg font-semibold">Ask your coach</h1>
-    <form method="post" action="{% url 'chat_clear' %}" onsubmit="return confirm('Clear chat history?')">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/11.1.1/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
+<style>
+  .md-content table { border-collapse: collapse; width: 100%; margin: 0.5rem 0; font-size: 0.85rem; }
+  .md-content th, .md-content td { border: 1px solid #cbd5e1; padding: 0.35rem 0.5rem; text-align: left; }
+  .md-content th { background: #f1f5f9; }
+  .md-content p { margin: 0.4rem 0; }
+  .md-content ul, .md-content ol { margin: 0.4rem 0 0.4rem 1.2rem; }
+  .md-content li { margin: 0.15rem 0; }
+  .md-content code { background: #e2e8f0; padding: 0 0.25rem; border-radius: 0.2rem; font-size: 0.85em; }
+  .md-content strong { font-weight: 600; }
+  .md-content h1, .md-content h2, .md-content h3 { font-weight: 600; margin: 0.5rem 0 0.25rem; }
+</style>
+
+<div class="grid grid-cols-1 md:grid-cols-4 gap-4 h-[75vh]">
+
+  <div class="md:col-span-1 card p-4 flex flex-col overflow-hidden">
+    <div class="flex gap-2 mb-3">
+      <form method="post" action="{% url 'chat_new' %}" class="flex-1">
+        {% csrf_token %}
+        <input type="hidden" name="mode" value="planner">
+        <button class="w-full bg-slate-900 text-white text-xs px-3 py-2 rounded-lg hover:bg-slate-800">
+          + New planner chat
+        </button>
+      </form>
+    </div>
+    <form method="post" action="{% url 'chat_new' %}" class="mb-4">
       {% csrf_token %}
-      <button class="text-xs text-red-400 hover:underline">clear chat</button>
+      <input type="hidden" name="mode" value="ask">
+      <button class="w-full border border-slate-300 text-slate-700 text-xs px-3 py-2 rounded-lg hover:bg-slate-50">
+        + New "just asking" chat
+      </button>
+    </form>
+
+    <div class="text-xs text-slate-400 mb-2">Your chats</div>
+    <div class="flex-1 overflow-y-auto space-y-1">
+      {% for s in sessions %}
+        <div class="flex items-center gap-1">
+          <a href="{% url 'chat_session' s.pk %}"
+             class="flex-1 text-sm px-2 py-2 rounded-lg truncate {% if s.pk == session.pk %}bg-emerald-100 text-emerald-800{% else %}hover:bg-slate-50{% endif %}">
+            {% if s.mode == 'ask' %}💬{% else %}🗓️{% endif %} {{ s.title|default:"Chat" }}
+          </a>
+          <form method="post" action="{% url 'chat_delete' s.pk %}" onsubmit="return confirm('Delete this chat?')">
+            {% csrf_token %}
+            <button class="text-slate-300 hover:text-red-400 text-xs px-1">✕</button>
+          </form>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="md:col-span-3 card p-6 flex flex-col overflow-hidden">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h1 class="text-lg font-semibold">{{ session.title|default:"Chat" }}</h1>
+        {% if session.mode == 'ask' %}
+          <span class="text-xs text-slate-500">Just asking - won't add anything to your calendar</span>
+        {% else %}
+          <span class="text-xs text-slate-500">Planner - can add/adjust workouts on your calendar</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div id="chat-log" class="flex-1 overflow-y-auto space-y-3 pr-2 mb-4">
+      {% for m in chat_history %}
+        <div class="flex {% if m.role == 'user' %}justify-end{% else %}justify-start{% endif %}">
+          <div class="max-w-[85%] rounded-2xl px-4 py-2 text-sm
+            {% if m.role == 'user' %}bg-emerald-600 text-white whitespace-pre-wrap{% else %}bg-slate-100 text-slate-800 md-content raw-markdown{% endif %}">
+            {{ m.content }}
+          </div>
+        </div>
+      {% empty %}
+        <p class="text-slate-400 text-sm">
+          {% if session.mode == 'ask' %}
+            Try: "How's my recovery looking this week?" - this chat won't touch your calendar.
+          {% else %}
+            Try: "What should I do today?" or "Plan my week."
+          {% endif %}
+        </p>
+      {% endfor %}
+    </div>
+
+    <form id="chat-form" class="flex gap-2">
+      <input id="chat-input" type="text" placeholder="Ask about today's training..."
+        class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" autocomplete="off">
+      <button id="chat-submit" class="bg-emerald-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700">
+        Send
+      </button>
     </form>
   </div>
 
-  <div id="chat-log" class="flex-1 overflow-y-auto space-y-3 pr-2 mb-4">
-    {% for m in chat_history %}
-      <div class="flex {% if m.role == 'user' %}justify-end{% else %}justify-start{% endif %}">
-        <div class="max-w-[75%] rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap
-          {% if m.role == 'user' %}bg-emerald-600 text-white{% else %}bg-slate-100 text-slate-800{% endif %}">
-          {{ m.content }}
-        </div>
-      </div>
-    {% empty %}
-      <p class="text-slate-400 text-sm">Try: "How am I feeling today, and what should my workout be?"</p>
-    {% endfor %}
-  </div>
-
-  <form id="chat-form" class="flex gap-2">
-    <input id="chat-input" type="text" placeholder="Ask about today's training..."
-      class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" autocomplete="off">
-    <button id="chat-submit" class="bg-emerald-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700">
-      Send
-    </button>
-  </form>
 </div>
 
 <script>
@@ -38,14 +100,32 @@ const chatLog = document.getElementById('chat-log');
 const chatForm = document.getElementById('chat-form');
 const chatInput = document.getElementById('chat-input');
 const chatSubmit = document.getElementById('chat-submit');
+const sendUrl = "{% url 'chat_send' session.pk %}";
+
+function renderMarkdown(rawText) {
+  const html = marked.parse(rawText, { breaks: true });
+  return DOMPurify.sanitize(html);
+}
+
+// Render markdown for any assistant messages already in the page on load.
+document.querySelectorAll('.raw-markdown').forEach(el => {
+  const raw = el.textContent;
+  el.innerHTML = renderMarkdown(raw);
+});
 
 function appendBubble(role, text) {
   const wrap = document.createElement('div');
   wrap.className = 'flex ' + (role === 'user' ? 'justify-end' : 'justify-start');
   const bubble = document.createElement('div');
-  bubble.className = 'max-w-[75%] rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap ' +
-    (role === 'user' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-800');
-  bubble.textContent = text;
+
+  if (role === 'user') {
+    bubble.className = 'max-w-[85%] rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap bg-emerald-600 text-white';
+    bubble.textContent = text;
+  } else {
+    bubble.className = 'max-w-[85%] rounded-2xl px-4 py-2 text-sm bg-slate-100 text-slate-800 md-content';
+    bubble.innerHTML = renderMarkdown(text);
+  }
+
   wrap.appendChild(bubble);
   chatLog.appendChild(wrap);
   chatLog.scrollTop = chatLog.scrollHeight;
@@ -62,7 +142,7 @@ chatForm.addEventListener('submit', async (e) => {
   const thinking = appendBubble('assistant', 'Thinking...');
 
   try {
-    const resp = await fetch("{% url 'chat_send' %}", {
+    const resp = await fetch(sendUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',

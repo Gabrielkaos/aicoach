@@ -1,4 +1,10 @@
-Django>=5.0,<5.3
-requests>=2.31
-python-dotenv>=1.0
-gpxpy>=1.6
+asgiref==3.11.1
+certifi==2026.6.17
+charset-normalizer==3.4.7
+Django==5.2.15
+gpxpy==1.6.2
+idna==3.18
+python-dotenv==1.2.2
+requests==2.34.2
+sqlparse==0.5.5
+urllib3==2.7.0

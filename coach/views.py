@@ -1,5 +1,3 @@
-import csv
-import io
 from datetime import date, timedelta
 
 from django.contrib import messages
@@ -7,11 +5,28 @@ from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views.decorators.http import require_POST
 
-from . import strava as strava_lib
 from . import llm as llm_lib
 from . import gpx as gpx_lib
-from .forms import DailyMetricForm, WorkoutForm, ZeppCsvImportForm, GpxUploadForm
-from .models import DailyMetric, Activity, Workout, ChatMessage, StravaToken
+from . import analytics
+from .forms import DailyMetricForm, WorkoutForm, ActiveConditionForm, GpxUploadForm, ProfileForm, GoalForm
+from .models import DailyMetric, ActiveCondition, Workout, ChatMessage, ChatSession, AthleteProfile, Goal
+
+
+def _metrics_window(days=30):
+    """Single shared query for 'recent metrics' - used for display, baselines, and flags alike,
+    so there's one window definition instead of several different hardcoded slices."""
+    return list(DailyMetric.objects.filter(date__gte=date.today() - timedelta(days=days)).order_by("-date"))
+
+
+def _get_profile():
+    profile = AthleteProfile.objects.first()
+    if not profile:
+        profile = AthleteProfile.objects.create()
+    return profile
+
+
+def _next_goal():
+    return Goal.objects.filter(event_date__gte=date.today()).order_by("event_date").first()
 
 
 def dashboard(request):
@@ -27,15 +42,38 @@ def dashboard(request):
     else:
         form = DailyMetricForm(initial={"date": date.today()})
 
-    recent_metrics = DailyMetric.objects.all()[:14]
-    recent_activities = Activity.objects.all()[:10]
-    strava_connected = StravaToken.objects.exists()
+    all_recent_metrics = _metrics_window(days=30)  # used for baselines + flags
+    display_metrics = all_recent_metrics[:14]       # what actually shows in the table
+    recent_workouts = Workout.objects.filter(status="completed").order_by("-date")[:10]
+    active_conditions = ActiveCondition.objects.filter(resolved=False)
+    condition_form = ActiveConditionForm(initial={"start_date": date.today()})
+
+    profile = _get_profile()
+    profile_form = ProfileForm(instance=profile)
+    goal = _next_goal()
+    goal_form = GoalForm(initial={"event_date": date.today()})
+    upcoming_goals = Goal.objects.filter(event_date__gte=date.today())
+
+    flags = analytics.compute_flags(all_recent_metrics, active_conditions, today=date.today())
+
+    # Sparklines want oldest-first
+    chronological = list(reversed(display_metrics))
+    hrv_svg = analytics.sparkline_svg([(m.date, m.hrv) for m in chronological], color="#059669")
+    rhr_svg = analytics.sparkline_svg([(m.date, m.rhr) for m in chronological], color="#e11d48")
 
     return render(request, "coach/dashboard.html", {
         "form": form,
-        "recent_metrics": recent_metrics,
-        "recent_activities": recent_activities,
-        "strava_connected": strava_connected,
+        "condition_form": condition_form,
+        "recent_metrics": display_metrics,
+        "recent_workouts": recent_workouts,
+        "active_conditions": active_conditions,
+        "hrv_svg": hrv_svg,
+        "rhr_svg": rhr_svg,
+        "flags": flags,
+        "profile_form": profile_form,
+        "goal_form": goal_form,
+        "goal": goal,
+        "upcoming_goals": upcoming_goals,
         "today": date.today(),
     })
 
@@ -43,6 +81,61 @@ def dashboard(request):
 def metric_delete(request, pk):
     get_object_or_404(DailyMetric, pk=pk).delete()
     messages.success(request, "Deleted metric entry.")
+    return redirect("dashboard")
+
+
+@require_POST
+def active_condition_add(request):
+    form = ActiveConditionForm(request.POST)
+    if form.is_valid():
+        form.save()
+        messages.success(request, "Added active condition.")
+    else:
+        messages.error(request, "Couldn't save that condition - check the dates.")
+    return redirect("dashboard")
+
+
+@require_POST
+def active_condition_resolve(request, pk):
+    condition = get_object_or_404(ActiveCondition, pk=pk)
+    condition.resolved = True
+    condition.save()
+    messages.success(request, f"Marked '{condition.title}' as resolved.")
+    return redirect("dashboard")
+
+
+@require_POST
+def active_condition_delete(request, pk):
+    get_object_or_404(ActiveCondition, pk=pk).delete()
+    return redirect("dashboard")
+
+
+@require_POST
+def profile_update(request):
+    profile = _get_profile()
+    form = ProfileForm(request.POST, instance=profile)
+    if form.is_valid():
+        form.save()
+        messages.success(request, "Updated your profile/baselines.")
+    else:
+        messages.error(request, "Couldn't save the profile - check the values.")
+    return redirect("dashboard")
+
+
+@require_POST
+def goal_add(request):
+    form = GoalForm(request.POST)
+    if form.is_valid():
+        form.save()
+        messages.success(request, "Added goal.")
+    else:
+        messages.error(request, "Couldn't save that goal - check the date.")
+    return redirect("dashboard")
+
+
+@require_POST
+def goal_delete(request, pk):
+    get_object_or_404(Goal, pk=pk).delete()
     return redirect("dashboard")
 
 
@@ -93,98 +186,141 @@ def workout_delete(request, pk):
     return redirect(request.META.get("HTTP_REFERER", "calendar"))
 
 
-def chat_view(request):
-    chat_history = ChatMessage.objects.all()[:100]
-    return render(request, "coach/chat.html", {"chat_history": chat_history})
+# --- Chat ---
+
+def chat_view(request, session_id=None):
+    sessions = ChatSession.objects.all()
+    if session_id:
+        session = get_object_or_404(ChatSession, pk=session_id)
+    else:
+        session = sessions.first()
+        if not session:
+            session = ChatSession.objects.create(title="New chat", mode="planner")
+        return redirect("chat_session", session_id=session.pk)
+
+    chat_history = session.messages.all()
+    return render(request, "coach/chat.html", {
+        "sessions": sessions,
+        "session": session,
+        "chat_history": chat_history,
+    })
 
 
 @require_POST
-def chat_send(request):
+def chat_new(request):
+    mode = request.POST.get("mode", "planner")
+    if mode not in dict(ChatSession.MODE_CHOICES):
+        mode = "planner"
+    title = "Just asking" if mode == "ask" else "Planning"
+    session = ChatSession.objects.create(title=title, mode=mode)
+    return redirect("chat_session", session_id=session.pk)
+
+
+@require_POST
+def chat_send(request, session_id):
+    session = get_object_or_404(ChatSession, pk=session_id)
     user_text = request.POST.get("message", "").strip()
     if not user_text:
         return JsonResponse({"error": "Empty message"}, status=400)
 
-    ChatMessage.objects.create(role="user", content=user_text)
+    ChatMessage.objects.create(session=session, role="user", content=user_text)
+
+    today = date.today()
+    workouts_qs = list(Workout.objects.filter(date__gte=today - timedelta(days=14)).order_by("date")[:60])
+    metrics_qs = _metrics_window(days=30)
+    active_conditions = list(ActiveCondition.objects.filter(resolved=False))
+    profile = _get_profile()
+    goal = _next_goal()
 
     context_str = llm_lib.build_context(
-        metrics_qs=list(DailyMetric.objects.all()[:14]),
-        activities_qs=list(Activity.objects.all()[:7]),
-        workouts_qs=list(Workout.objects.filter(date__gte=date.today() - timedelta(days=7))[:20]),
-        today=date.today(),
+        metrics_qs=metrics_qs,
+        workouts_qs=workouts_qs,
+        active_conditions=active_conditions,
+        today=today,
+        profile=profile,
+        goal=goal,
     )
 
-    history = ChatMessage.objects.all().order_by("created_at")[:40]
-    messages_payload = [{"role": "system", "content": llm_lib.SYSTEM_PROMPT + "\n\n" + context_str}]
+    system_prompt = llm_lib.SYSTEM_PROMPT
+    if session.mode == "ask":
+        system_prompt += (
+            "\n\nThe user is in 'just asking' mode right now: give advice and answer questions "
+            "normally, but do NOT output any ```workout``` or ```workout_action``` block in this "
+            "reply - just talk it through in plain text, even if you'd normally suggest scheduling "
+            "or changing something."
+        )
+
+    history = session.messages.order_by("created_at")[:40]
+    messages_payload = [{"role": "system", "content": system_prompt + "\n\n" + context_str}]
     for m in history:
         messages_payload.append({"role": m.role, "content": m.content})
 
     raw_reply = llm_lib.call_llm(messages_payload)
     cleaned_reply, workouts_data = llm_lib.extract_workout_blocks(raw_reply)
+    cleaned_reply, actions_data = llm_lib.extract_workout_actions(cleaned_reply)
 
-    created_workouts = []
-    for workout_data in workouts_data:
-        if workout_data.get("date") and workout_data.get("title"):
-            created_workouts.append(Workout.objects.create(
+    change_summaries = []
+
+    if session.mode == "planner":
+        for workout_data in workouts_data:
+            if not (workout_data.get("date") and workout_data.get("title")):
+                continue
+            # Duplicate guard: keyed on (date, workout_type) so a same-day re-plan of the SAME
+            # type of session (e.g. re-suggesting today's cycling ride) updates in place, but two
+            # different types on the same day (e.g. cycling + strength) are both kept - fixed
+            # after this used to be keyed on date alone, which let a second workout on the same
+            # day silently overwrite the first regardless of type.
+            workout, created = Workout.objects.update_or_create(
                 date=workout_data["date"],
-                title=workout_data["title"],
-                description=workout_data.get("description", ""),
-                workout_type=workout_data.get("workout_type", ""),
                 source="llm",
-            ))
+                workout_type=workout_data.get("workout_type", ""),
+                defaults={
+                    "title": workout_data["title"],
+                    "description": workout_data.get("description", ""),
+                    "status": "planned",
+                },
+            )
+            verb = "Added" if created else "Updated"
+            change_summaries.append(f"{verb}: {workout.title} on {workout.date}")
 
-    if created_workouts:
-        if len(created_workouts) == 1:
-            w = created_workouts[0]
-            cleaned_reply += f"\n\n_Added to your calendar: {w.title} on {w.date}._"
-        else:
-            summary = "; ".join(f"{w.title} ({w.date})" for w in created_workouts)
-            cleaned_reply += f"\n\n_Added {len(created_workouts)} workouts to your calendar: {summary}._"
+        for action in actions_data:
+            workout_id = action.get("id")
+            workout = Workout.objects.filter(pk=workout_id).first() if workout_id else None
+            if not workout:
+                change_summaries.append(f"Couldn't find a calendar entry with id={workout_id}")
+                continue
 
-    ChatMessage.objects.create(role="assistant", content=cleaned_reply)
+            act = action.get("action")
+            if act == "move" and action.get("new_date"):
+                workout.date = action["new_date"]
+                workout.save()
+                change_summaries.append(f"Moved '{workout.title}' to {workout.date}")
+            elif act == "update":
+                for field in ("title", "description", "workout_type"):
+                    if action.get(field):
+                        setattr(workout, field, action[field])
+                workout.save()
+                change_summaries.append(f"Updated '{workout.title}'")
+            elif act == "delete":
+                title = workout.title
+                workout.delete()
+                change_summaries.append(f"Removed '{title}' from your calendar")
+
+    if change_summaries:
+        cleaned_reply += "\n\n_" + "; ".join(change_summaries) + "._"
+
+    ChatMessage.objects.create(session=session, role="assistant", content=cleaned_reply)
 
     return JsonResponse({
         "reply": cleaned_reply,
-        "workouts_added": len(created_workouts),
+        "changes": len(change_summaries),
     })
 
 
 @require_POST
-def chat_clear(request):
-    ChatMessage.objects.all().delete()
+def chat_delete(request, session_id):
+    get_object_or_404(ChatSession, pk=session_id).delete()
     return redirect("chat")
-
-
-# --- Strava ---
-
-def strava_connect(request):
-    return redirect(strava_lib.get_authorize_url())
-
-
-def strava_callback(request):
-    code = request.GET.get("code")
-    error = request.GET.get("error")
-    if error:
-        messages.error(request, f"Strava authorization was denied ({error}).")
-        return redirect("dashboard")
-    if not code:
-        messages.error(request, "No code returned from Strava.")
-        return redirect("dashboard")
-
-    try:
-        strava_lib.exchange_code_for_token(code)
-        messages.success(request, "Strava connected!")
-    except Exception as e:
-        messages.error(request, f"Failed to connect Strava: {e}")
-    return redirect("dashboard")
-
-
-def strava_sync(request):
-    count, error = strava_lib.sync_recent_activities()
-    if error:
-        messages.error(request, error)
-    else:
-        messages.success(request, f"Synced {count} activities from Strava.")
-    return redirect("dashboard")
 
 
 # --- GPX import ---
@@ -197,13 +333,15 @@ def gpx_upload(request):
             for f in form.cleaned_data["gpx_files"]:
                 try:
                     data = gpx_lib.parse_gpx_file(f)
-                    Activity.objects.update_or_create(
-                        external_id=f"gpx:{f.name}:{data['start_date'].isoformat()}",
+                    activity_date = data["start_date"].date() if hasattr(data["start_date"], "date") else data["start_date"]
+                    Workout.objects.update_or_create(
+                        external_ref=f"gpx:{f.name}:{data['start_date'].isoformat()}",
                         source="gpx",
                         defaults={
-                            "name": data["name"],
-                            "activity_type": data["activity_type"],
-                            "start_date": data["start_date"],
+                            "date": activity_date,
+                            "title": data["name"],
+                            "workout_type": data["activity_type"],
+                            "status": "completed",
                             "distance_km": data["distance_km"],
                             "moving_time_min": data["moving_time_min"],
                             "avg_hr": data["avg_hr"],
@@ -216,65 +354,10 @@ def gpx_upload(request):
                     failed.append(f"{f.name}: {e}")
 
             if imported:
-                messages.success(request, f"Imported {imported} activity(ies) from GPX.")
+                messages.success(request, f"Imported {imported} activity(ies) into your calendar.")
             for msg in failed:
                 messages.error(request, f"Couldn't import {msg}")
             return redirect("dashboard")
     else:
         form = GpxUploadForm()
     return render(request, "coach/gpx_upload.html", {"form": form})
-
-
-# --- Zepp CSV import ---
-
-def zepp_import(request):
-    result = None
-    if request.method == "POST":
-        form = ZeppCsvImportForm(request.POST, request.FILES)
-        if form.is_valid():
-            f = form.cleaned_data["csv_file"]
-            date_col = form.cleaned_data["date_col"]
-            hrv_col = form.cleaned_data["hrv_col"]
-            rhr_col = form.cleaned_data["rhr_col"]
-            sleep_col = form.cleaned_data["sleep_col"]
-
-            text = io.TextIOWrapper(f.file, encoding="utf-8-sig")
-            reader = csv.DictReader(text)
-            imported, skipped = 0, 0
-            for row in reader:
-                raw_date = row.get(date_col)
-                if not raw_date:
-                    skipped += 1
-                    continue
-                defaults = {}
-                if hrv_col and row.get(hrv_col):
-                    defaults["hrv"] = _safe_float(row.get(hrv_col))
-                if rhr_col and row.get(rhr_col):
-                    defaults["rhr"] = _safe_int(row.get(rhr_col))
-                if sleep_col and row.get(sleep_col):
-                    defaults["sleep_hours"] = _safe_float(row.get(sleep_col))
-                try:
-                    DailyMetric.objects.update_or_create(date=raw_date[:10], defaults=defaults)
-                    imported += 1
-                except Exception:
-                    skipped += 1
-            result = f"Imported {imported} rows, skipped {skipped}."
-            messages.success(request, result)
-            return redirect("dashboard")
-    else:
-        form = ZeppCsvImportForm()
-    return render(request, "coach/zepp_import.html", {"form": form, "result": result})
-
-
-def _safe_float(v):
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
-
-
-def _safe_int(v):
-    try:
-        return int(float(v))
-    except (TypeError, ValueError):
-        return None

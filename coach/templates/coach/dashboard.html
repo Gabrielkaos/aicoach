@@ -2,6 +2,15 @@
 {% block title %}Dashboard - AI Coach{% endblock %}
 {% block content %}
 
+{% if flags %}
+<div class="card p-4 mb-6 border-l-4 border-amber-400 bg-amber-50">
+  <h2 class="text-sm font-semibold text-amber-800 mb-1">Worth a look</h2>
+  <ul class="text-sm text-amber-800 space-y-1">
+    {% for f in flags %}<li>{{ f }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
 <div class="grid md:grid-cols-2 gap-6">
 
   <div class="card p-6">
@@ -20,38 +29,117 @@
         Save metrics
       </button>
     </form>
+
+    <hr class="my-4">
+    <h3 class="text-sm font-semibold mb-2">Trends (last 14 days)</h3>
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <div class="text-xs text-slate-400 mb-1">HRV (ms)</div>
+        {% if hrv_svg %}{{ hrv_svg|safe }}{% else %}<p class="text-xs text-slate-400">Not enough data yet.</p>{% endif %}
+      </div>
+      <div>
+        <div class="text-xs text-slate-400 mb-1">RHR (bpm)</div>
+        {% if rhr_svg %}{{ rhr_svg|safe }}{% else %}<p class="text-xs text-slate-400">Not enough data yet.</p>{% endif %}
+      </div>
+    </div>
   </div>
 
   <div class="card p-6">
-    <div class="flex items-center justify-between mb-4">
-      <h2 class="text-lg font-semibold">Strava</h2>
-      {% if strava_connected %}
-        <span class="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full">Connected</span>
-      {% endif %}
-    </div>
-    {% if strava_connected %}
-      <p class="text-sm text-slate-500 mb-3">Pull your latest activities in.</p>
-      <a href="{% url 'strava_sync' %}" class="inline-block bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-600">
-        Sync recent activities
-      </a>
-    {% else %}
-      <p class="text-sm text-slate-500 mb-3">Connect your Strava account to pull in completed activities automatically.</p>
-      <a href="{% url 'strava_connect' %}" class="inline-block bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-600">
-        Connect Strava
-      </a>
-    {% endif %}
-    <hr class="my-4">
-    <h3 class="text-sm font-semibold mb-2">Recent activities</h3>
-    <ul class="text-sm space-y-1 max-h-48 overflow-y-auto">
-      {% for a in recent_activities %}
-        <li class="flex justify-between border-b border-slate-100 py-1">
-          <span>{{ a.start_date|date:"M d" }} — {{ a.activity_type }}</span>
-          <span class="text-slate-500">{{ a.distance_km|floatformat:1 }}km · {{ a.moving_time_min|floatformat:0 }}min</span>
+    <h2 class="text-lg font-semibold mb-4">Active conditions</h2>
+    <p class="text-xs text-slate-500 mb-3">
+      Injuries or anything else the coach should keep in mind for as long as it's active - not just
+      on the day you mention it.
+    </p>
+    <ul class="space-y-2 mb-4 max-h-40 overflow-y-auto">
+      {% for c in active_conditions %}
+        <li class="border border-slate-200 rounded-lg p-2 text-sm flex justify-between items-start gap-2">
+          <div>
+            <div class="font-medium">{{ c.title }}</div>
+            <div class="text-xs text-slate-500">since {{ c.start_date }}{% if c.expected_end_date %} · until ~{{ c.expected_end_date }}{% endif %}</div>
+            {% if c.description %}<div class="text-xs text-slate-500 mt-1">{{ c.description }}</div>{% endif %}
+          </div>
+          <div class="flex flex-col gap-1 text-xs shrink-0">
+            <form method="post" action="{% url 'active_condition_resolve' c.pk %}">
+              {% csrf_token %}
+              <button class="text-emerald-600 hover:underline">resolve</button>
+            </form>
+            <form method="post" action="{% url 'active_condition_delete' c.pk %}" onsubmit="return confirm('Delete?')">
+              {% csrf_token %}
+              <button class="text-red-400 hover:underline">delete</button>
+            </form>
+          </div>
         </li>
       {% empty %}
-        <li class="text-slate-400">No activities yet.</li>
+        <li class="text-slate-400 text-sm">Nothing active right now.</li>
       {% endfor %}
     </ul>
+
+    <form method="post" action="{% url 'active_condition_add' %}" class="space-y-2 border-t border-slate-100 pt-3">
+      {% csrf_token %}
+      {% for field in condition_form %}
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">{{ field.label }}</label>
+          {{ field }}
+        </div>
+      {% endfor %}
+      <button class="bg-slate-900 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-slate-800">
+        Add condition
+      </button>
+    </form>
+  </div>
+
+</div>
+
+<div class="grid md:grid-cols-2 gap-6 mt-6">
+
+  <div class="card p-6">
+    <h2 class="text-lg font-semibold mb-4">Goal</h2>
+    {% if goal %}
+      <div class="border border-slate-200 rounded-lg p-3 text-sm mb-4">
+        <div class="font-medium">{{ goal.title }}</div>
+        <div class="text-xs text-slate-500">{{ goal.event_date }}{% if goal.target_distance_km %} · {{ goal.target_distance_km|floatformat:1 }}km{% endif %}</div>
+        {% if goal.notes %}<div class="text-xs text-slate-500 mt-1">{{ goal.notes }}</div>{% endif %}
+        <form method="post" action="{% url 'goal_delete' goal.pk %}" onsubmit="return confirm('Delete this goal?')" class="mt-2">
+          {% csrf_token %}
+          <button class="text-red-400 hover:underline text-xs">delete</button>
+        </form>
+      </div>
+    {% else %}
+      <p class="text-sm text-slate-400 mb-4">No goal set - the coach will plan day-to-day instead of toward an event.</p>
+    {% endif %}
+    <form method="post" action="{% url 'goal_add' %}" class="grid grid-cols-2 gap-2">
+      {% csrf_token %}
+      {% for field in goal_form %}
+        <div class="{% if field.name == 'notes' %}col-span-2{% endif %}">
+          <label class="block text-xs font-medium text-slate-500 mb-1">{{ field.label }}</label>
+          {{ field }}
+        </div>
+      {% endfor %}
+      <button class="col-span-2 bg-slate-900 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-slate-800">
+        Set goal
+      </button>
+    </form>
+  </div>
+
+  <div class="card p-6">
+    <h2 class="text-lg font-semibold mb-4">Baselines &amp; profile</h2>
+    <p class="text-xs text-slate-500 mb-3">
+      If your Zepp app already shows you a personal HRV/RHR baseline, enter it here and the coach
+      will use it directly instead of computing its own from your logged history. Max HR (or age,
+      to estimate it) also sharpens the training-load effort split.
+    </p>
+    <form method="post" action="{% url 'profile_update' %}" class="grid grid-cols-2 gap-3">
+      {% csrf_token %}
+      {% for field in profile_form %}
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">{{ field.label }}</label>
+          {{ field }}
+        </div>
+      {% endfor %}
+      <button class="col-span-2 bg-slate-900 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-slate-800">
+        Save
+      </button>
+    </form>
   </div>
 
 </div>
@@ -89,6 +177,27 @@
     </tbody>
   </table>
   </div>
+</div>
+
+<div class="card p-6 mt-6">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-lg font-semibold">Recent completed workouts</h2>
+    <a href="{% url 'gpx_upload' %}" class="text-xs text-emerald-700 hover:underline">+ import GPX</a>
+  </div>
+  <ul class="text-sm space-y-1 max-h-56 overflow-y-auto">
+    {% for w in recent_workouts %}
+      <li class="flex justify-between border-b border-slate-100 py-1">
+        <span>{{ w.date|date:"M d" }} — {{ w.title }} {% if w.source == 'gpx' %}<span class="text-slate-400">(gpx)</span>{% endif %}</span>
+        <span class="text-slate-500">
+          {% if w.distance_km %}{{ w.distance_km|floatformat:1 }}km{% endif %}
+          {% if w.moving_time_min %}· {{ w.moving_time_min|floatformat:0 }}min{% endif %}
+          {% if w.avg_hr %}· avg_hr {{ w.avg_hr|floatformat:0 }}{% endif %}
+        </span>
+      </li>
+    {% empty %}
+      <li class="text-slate-400">No completed workouts yet.</li>
+    {% endfor %}
+  </ul>
 </div>
 
 <div class="mt-6 text-center">
