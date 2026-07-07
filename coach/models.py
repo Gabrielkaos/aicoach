@@ -2,7 +2,7 @@ from django.db import models
 
 
 class DailyMetric(models.Model):
-    """Daily wellness metrics - entered manually or imported from GPX-adjacent notes."""
+    """Daily wellness metrics - entered manually."""
 
     date = models.DateField(unique=True)
     hrv = models.FloatField(null=True, blank=True, help_text="ms")
@@ -41,11 +41,11 @@ class ActiveCondition(models.Model):
 
 class Workout(models.Model):
     """A single calendar entry - either a planned/suggested session, or a completed activity
-    imported from GPX. Unifying both in one model means the AI coach only ever needs to look at
+    imported from FIT. Unifying both in one model means the AI coach only ever needs to look at
     the calendar to know what happened and what's planned; there's no separate activity feed."""
 
     STATUS_CHOICES = [("planned", "Planned"), ("completed", "Completed"), ("skipped", "Skipped")]
-    SOURCE_CHOICES = [("llm", "AI Coach"), ("manual", "Manual"), ("gpx", "GPX upload")]
+    SOURCE_CHOICES = [("llm", "AI Coach"), ("manual", "Manual"), ("fit", "FIT upload")]
 
     date = models.DateField()
     title = models.CharField(max_length=255)
@@ -54,14 +54,24 @@ class Workout(models.Model):
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="planned")
     source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default="manual")
 
-    # Populated for real completed activities (currently only via GPX upload).
+    # Populated for real completed activities (currently only via FIT upload), and/or used to
+    # express a *target* when the AI coach proposes a planned workout with specific numbers.
     distance_km = models.FloatField(null=True, blank=True)
     moving_time_min = models.FloatField(null=True, blank=True)
     avg_hr = models.FloatField(null=True, blank=True)
     max_hr = models.FloatField(null=True, blank=True)
+    hr_min = models.FloatField(null=True, blank=True, help_text="Lowest HR seen (completed) or bottom of a target HR range (planned)")
+    avg_speed_kmh = models.FloatField(null=True, blank=True)
     elevation_gain_m = models.FloatField(null=True, blank=True)
+
+    # Interval structure - either detected from a FIT file's laps, or a target set by the coach.
+    interval_repeats = models.PositiveIntegerField(null=True, blank=True)
+    interval_distance_m = models.FloatField(null=True, blank=True)
+    interval_rest_seconds = models.FloatField(null=True, blank=True)
+    laps_json = models.JSONField(null=True, blank=True, help_text="Raw per-lap splits, if imported from a FIT file")
+
     external_ref = models.CharField(max_length=255, blank=True, null=True, db_index=True,
-                                     help_text="Dedup key for imports, e.g. gpx filename+timestamp")
+                                     help_text="Dedup key for imports, e.g. fit filename+timestamp")
 
     created_at = models.DateTimeField(auto_now_add=True)
 

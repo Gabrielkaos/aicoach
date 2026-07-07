@@ -23,5 +23,5 @@ urlpatterns = [
     path("chat/<int:session_id>/send/", views.chat_send, name="chat_send"),
     path("chat/<int:session_id>/delete/", views.chat_delete, name="chat_delete"),
 
-    path("gpx/upload/", views.gpx_upload, name="gpx_upload"),
+    path("fit/upload/", views.fit_upload, name="fit_upload"),
 ]

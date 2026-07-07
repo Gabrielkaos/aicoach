@@ -182,12 +182,12 @@
 <div class="card p-6 mt-6">
   <div class="flex items-center justify-between mb-4">
     <h2 class="text-lg font-semibold">Recent completed workouts</h2>
-    <a href="{% url 'gpx_upload' %}" class="text-xs text-emerald-700 hover:underline">+ import GPX</a>
+    <a href="{% url 'fit_upload' %}" class="text-xs text-emerald-700 hover:underline">+ import FIT</a>
   </div>
   <ul class="text-sm space-y-1 max-h-56 overflow-y-auto">
     {% for w in recent_workouts %}
       <li class="flex justify-between border-b border-slate-100 py-1">
-        <span>{{ w.date|date:"M d" }} — {{ w.title }} {% if w.source == 'gpx' %}<span class="text-slate-400">(gpx)</span>{% endif %}</span>
+        <span>{{ w.date|date:"M d" }} — {{ w.title }} {% if w.source == 'fit' %}<span class="text-slate-400">(fit)</span>{% endif %}</span>
         <span class="text-slate-500">
           {% if w.distance_km %}{{ w.distance_km|floatformat:1 }}km{% endif %}
           {% if w.moving_time_min %}· {{ w.moving_time_min|floatformat:0 }}min{% endif %}

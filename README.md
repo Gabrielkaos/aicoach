@@ -3,8 +3,10 @@
 A small Django app that acts as a personal training coach:
 
 - Log daily recovery metrics (HRV, resting heart rate, sleep, body battery, notes)
-- Upload GPX files (Zepp, Garmin, anything) — they're parsed and dropped straight into your
-  **calendar** as completed workouts (distance, moving time, elevation gain, heart rate if present)
+- Upload FIT files (Zepp, Garmin, anything) — they're parsed and dropped straight into your
+  **calendar** as completed workouts, with real lap-level data: HR range (not just an average),
+  pace/speed, and genuine interval structure (reps, distance, rest) detected from your watch's
+  lap splits — richer than GPX, which only has a GPS track
 - Flag **active conditions** (injuries, illness) that stay relevant for their whole duration, not
   just the day you mention them
 - A weekly training calendar — planned, completed, and skipped sessions all in one place
@@ -25,8 +27,8 @@ A small Django app that acts as a personal training coach:
   so what you see matches what the coach reasons about
 
 There's deliberately no Strava or CSV import — Strava's API now requires a paid subscription for
-third-party apps, and Zepp has no public API at all, so **GPX upload is the one supported import
-path** and it covers both.
+third-party apps, and Zepp has no public API at all, so **FIT upload is the one supported import
+path** and it covers both, with richer per-lap data than GPX ever gave us.
 
 ## 1. Setup
 
@@ -65,27 +67,39 @@ Visit `http://127.0.0.1:8000/`.
   the training-load effort split into real HR-zone percentages instead of a self-relative guess.
 - **Goal**: set an event you're training toward. It's injected into every chat so the coach can
   reason about "X weeks out" instead of only ever thinking day-to-day.
-- **Import GPX** (`/gpx/upload/`): upload one or more `.gpx` files. They're parsed and inserted
-  directly into your calendar as completed workouts (status `completed`, source `gpx`) — there's
-  no separate "activity feed" to keep in sync; the calendar is the single source of truth.
+- **Import FIT** (`/fit/upload/`): upload one or more `.fit` files. Distance, moving time, HR
+  range (a true min-max, not just an average), pace/speed, and elevation gain are extracted from
+  the file's session summary. If your watch was manually lapped during work/rest segments, real
+  interval structure (rep count, distance, rest duration) is detected from those lap splits —
+  with a consistency check so a handful of uneven laps on a normal long ride isn't mistaken for
+  intervals. A short natural-language description is generated from those stats via one small LLM
+  call at upload time (falling back to a plain stats string if the LLM isn't configured or fails),
+  so the main chat only ever reads a compact summary rather than reprocessing raw data every
+  message. Everything lands directly in your calendar as a completed workout — there's no separate
+  "activity feed" to keep in sync; the calendar is the single source of truth.
 - **Active conditions**: add something like "Shin splints (left leg)" with a start date and an
   optional expected end date. It's injected into every chat's context for as long as it's
   unresolved, so the coach keeps steering you toward low-impact options the whole time you're
   recovering — not just on the day you first mentioned it in a note.
 - **Calendar** (`/calendar/`): weekly view of planned/completed/skipped workouts, each showing
-  distance/time/heart rate when available. Add workouts manually, mark done/skipped, or let the
-  coach manage it via chat.
+  pace/speed, HR range, elevation, and interval structure (reps/distance/rest) when available.
+  Add workouts manually, mark done/skipped, or let the coach manage it via chat.
 - **Chat** (`/chat/`): a sidebar lists your chat threads.
   - **Planner** threads can add new workouts (`​```workout​`) and move/edit/delete existing ones
     (`​```workout_action​`, referencing the id shown in the calendar context) — so "actually move
-    that to Thursday" or "cancel Tuesday's run" works directly in conversation.
+    that to Thursday" or "cancel Tuesday's run" works directly in conversation. When the coach
+    suggests a session, it's asked to include concrete targets where relevant - pace/speed,
+    duration, a target HR range, and (for interval sessions) rep count/distance/rest - not just a
+    vague text description.
   - **"Just asking"** threads answer normally but are blocked in code from writing to the
     calendar at all, even if the model outputs a workout block anyway.
-  - Every message includes: active conditions, your calendar from the last 14 days through
-    upcoming (each entry with an id, and completed ones with their stats), a rough training-load
-    summary, and your last 14 days of recovery metrics.
+  - Every message includes: active conditions, your goal, your calendar from the last 14 days
+    through upcoming (each entry with an id, and completed ones with real stats: HR range,
+    pace/speed, interval structure), a training-load summary, and your last 30 days of recovery
+    metrics shown relative to your baseline.
   - Asking to re-plan a day you've already scheduled updates that entry instead of creating a
-    duplicate (only applies to AI-suggested entries; manual ones are left alone).
+    duplicate (only applies to AI-suggested entries of the same workout type; manual ones are
+    left alone).
 
 ## 3. Notes on the "free LLM" choice
 
@@ -100,11 +114,11 @@ change `LLM_API_BASE` / `LLM_MODEL` / `LLM_API_KEY` in `.env` — no code change
 aicoach/
   aicoach/           Django project settings/urls
   coach/
-    models.py         DailyMetric, ActiveCondition, Workout (unified calendar+activity), ChatSession, ChatMessage
-    views.py           dashboard, calendar, chat, gpx upload, active conditions
-    llm.py             builds context + calls the LLM API + parses workout create/move/edit/delete blocks
-    analytics.py       training-load summary text + SVG sparkline generation
-    gpx.py             GPX file parsing (distance, time, HR, elevation)
+    models.py         DailyMetric, ActiveCondition, AthleteProfile, Goal, Workout (unified calendar+activity), ChatSession, ChatMessage
+    views.py           dashboard, calendar, chat, fit upload, active conditions, profile/goal
+    llm.py             builds context + calls the LLM API + parses workout create/move/edit/delete blocks + FIT description enhancement
+    analytics.py       baselines, training-load summary, proactive flags, SVG sparkline generation
+    fit.py             FIT file parsing (laps, HR range, pace, interval detection)
     templates/coach/   Tailwind-styled templates (CDN, no build step)
 ```
 
@@ -127,3 +141,11 @@ aicoach/
 - Proactive flags are simple, deterministic threshold checks (not LLM calls), so they're fast and
   free but won't catch anything more nuanced than "3 days trending the wrong way" or "N days since
   a condition started."
+- Interval detection from FIT files relies on your watch having actual lap splits (manual or
+  auto-lap) marking work/rest boundaries, plus a consistency check (similar-duration "work" laps,
+  none longer than 25 minutes) to avoid mistaking a few uneven laps of a long ride for real
+  intervals. A session lapped inconsistently, or one where "work" reps genuinely vary a lot in
+  length, may not get flagged as an interval workout even though it was one.
+- The FIT description enhancement is one extra LLM call per uploaded file - on a very slow/rate
+  limited free provider this could make bulk uploads feel sluggish; it always falls back to a
+  plain (if less readable) stats string rather than failing the upload.

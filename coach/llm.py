@@ -12,7 +12,7 @@ SYSTEM_PROMPT = """You are an experienced, encouraging endurance and fitness coa
 You are given, in the context below: the current date, any active injuries/conditions the user has
 flagged (these stay relevant for their whole duration, not just on the day they were logged), any
 upcoming goal/event they're training for, a unified calendar covering roughly the last two weeks
-through what's upcoming (completed sessions - including ones imported from GPX files - and
+through what's upcoming (completed sessions - including ones imported from FIT files - and
 planned/suggested ones, each with an id), a rough training-load summary, and recent daily recovery
 metrics (HRV, resting heart rate, sleep) shown relative to the user's own baseline where one is
 available. The calendar is the single source of truth for what the user has actually done and has
@@ -47,11 +47,18 @@ you in the context; if data is missing, say so and ask for it or give general ad
 --- Adding or changing calendar entries ---
 
 To ADD a new workout, use a fenced block like this, one JSON object per block, nothing else inside
-the fence:
+the fence. Always include specific, concrete targets where they make sense for the session -
+target pace or speed, duration, a target heart-rate range, and (if it's an interval session) the
+repeat count, interval distance, and rest duration - rather than a vague description:
 
 ```workout
-{"date": "YYYY-MM-DD", "title": "Short title", "description": "1-2 sentence description", "workout_type": "easy run|intervals|long run|cycling|strength|rest|cross-train|swim"}
+{"date": "YYYY-MM-DD", "title": "Short title", "description": "1-2 sentence description", "workout_type": "easy run|intervals|long run|cycling|strength|rest|cross-train|swim", "distance_km": 8, "moving_time_min": 45, "avg_speed_kmh": 10.7, "hr_min": 130, "avg_hr": 145, "interval_repeats": 6, "interval_distance_m": 800, "interval_rest_seconds": 90}
 ```
+
+Only include the numeric target fields that are actually relevant to that session - e.g. a rest day
+needs none of them, an easy run might just have distance/time/HR range, and only an interval
+session needs interval_repeats/interval_distance_m/interval_rest_seconds. hr_min and avg_hr
+together describe a target HR range (low-high) for the session, not just an average.
 
 If proposing a whole week, output multiple separate ```workout ...``` blocks like that, one per
 day - never put more than one JSON object in a single fence, and never use a JSON array.
@@ -147,10 +154,21 @@ def build_context(metrics_qs, workouts_qs, active_conditions=None, today=None, p
                 stat_bits.append(f"{w.distance_km:.1f}km")
             if w.moving_time_min:
                 stat_bits.append(f"{w.moving_time_min:.0f}min")
-            if w.avg_hr:
+            if w.avg_speed_kmh:
+                stat_bits.append(f"{w.avg_speed_kmh:.1f}km/h")
+            if w.hr_min and w.avg_hr and w.hr_min != w.avg_hr:
+                stat_bits.append(f"HR range {w.hr_min:.0f}-{w.max_hr or w.avg_hr:.0f}")
+            elif w.avg_hr:
                 stat_bits.append(f"avg_hr={w.avg_hr:.0f}")
             if w.elevation_gain_m:
                 stat_bits.append(f"elev_gain={w.elevation_gain_m:.0f}m")
+            if w.interval_repeats:
+                interval_bits = [f"{w.interval_repeats}x"]
+                if w.interval_distance_m:
+                    interval_bits.append(f"{w.interval_distance_m:.0f}m")
+                if w.interval_rest_seconds:
+                    interval_bits.append(f"{w.interval_rest_seconds:.0f}s rest")
+                stat_bits.append("intervals: " + " ".join(interval_bits))
             if stat_bits:
                 line += " | " + ", ".join(stat_bits)
 
@@ -242,6 +260,28 @@ def extract_workout_actions(text):
     return cleaned, actions
 
 
+def enhance_workout_description(deterministic_summary):
+    """One small LLM call at ingest time to turn computed FIT stats into a natural sentence or
+    two - the 'pre-process once, so the main chat only sees a compact summary' step. This is the
+    same architectural idea as an ingest-time embedding/summarization stage in a RAG pipeline; it
+    just uses a short LLM call over deterministic stats rather than vector embeddings, since
+    embeddings are built for semantic text retrieval and don't apply well to numeric time-series
+    data like a heart-rate/pace stream. Falls back to the plain deterministic text if the LLM
+    isn't configured or the call fails, so an upload never breaks on this step."""
+    prompt = (
+        "Rewrite these computed workout stats as one or two short, natural sentences for a "
+        "training log entry. Do not invent any numbers that aren't given here, and don't add "
+        "commentary or advice - just describe what happened.\n\nStats: " + deterministic_summary
+    )
+    try:
+        text = call_llm([{"role": "user", "content": prompt}])
+    except Exception:
+        return deterministic_summary
+    if not text or text.startswith("Sorry,") or text.startswith("I don't have an LLM"):
+        return deterministic_summary
+    return text.strip()
+
+
 def call_llm(messages):
     """messages: list of {"role": "system"|"user"|"assistant", "content": str}"""
     if not settings.LLM_API_KEY:
@@ -260,7 +300,6 @@ def call_llm(messages):
         "messages": messages,
         "temperature": 0.6,
         "max_tokens": 1600,
-        "reasoning_effort":"high"
     }
     try:
         resp = requests.post(url, headers=headers, json=payload, timeout=30)

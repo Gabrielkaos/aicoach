@@ -63,8 +63,8 @@ class MultipleFileField(forms.FileField):
         return single_file_clean(data, initial)
 
 
-class GpxUploadForm(forms.Form):
-    gpx_files = MultipleFileField(help_text="Select one or more .gpx files exported from Zepp, Garmin, etc.")
+class FitUploadForm(forms.Form):
+    fit_files = MultipleFileField(help_text="Select one or more .fit files exported from Zepp, Garmin, etc.")
 
 
 class ProfileForm(forms.ModelForm):

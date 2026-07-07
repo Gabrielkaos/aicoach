@@ -6,9 +6,9 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.views.decorators.http import require_POST
 
 from . import llm as llm_lib
-from . import gpx as gpx_lib
+from . import fit as fit_lib
 from . import analytics
-from .forms import DailyMetricForm, WorkoutForm, ActiveConditionForm, GpxUploadForm, ProfileForm, GoalForm
+from .forms import DailyMetricForm, WorkoutForm, ActiveConditionForm, FitUploadForm, ProfileForm, GoalForm
 from .models import DailyMetric, ActiveCondition, Workout, ChatMessage, ChatSession, AthleteProfile, Goal
 
 
@@ -278,6 +278,14 @@ def chat_send(request, session_id):
                     "title": workout_data["title"],
                     "description": workout_data.get("description", ""),
                     "status": "planned",
+                    "distance_km": workout_data.get("distance_km"),
+                    "moving_time_min": workout_data.get("moving_time_min"),
+                    "avg_speed_kmh": workout_data.get("avg_speed_kmh"),
+                    "avg_hr": workout_data.get("avg_hr"),
+                    "hr_min": workout_data.get("hr_min"),
+                    "interval_repeats": workout_data.get("interval_repeats"),
+                    "interval_distance_m": workout_data.get("interval_distance_m"),
+                    "interval_rest_seconds": workout_data.get("interval_rest_seconds"),
                 },
             )
             verb = "Added" if created else "Updated"
@@ -323,30 +331,41 @@ def chat_delete(request, session_id):
     return redirect("chat")
 
 
-# --- GPX import ---
+# --- FIT import ---
 
-def gpx_upload(request):
+def fit_upload(request):
     if request.method == "POST":
-        form = GpxUploadForm(request.POST, request.FILES)
+        form = FitUploadForm(request.POST, request.FILES)
         if form.is_valid():
             imported, failed = 0, []
-            for f in form.cleaned_data["gpx_files"]:
+            for f in form.cleaned_data["fit_files"]:
                 try:
-                    data = gpx_lib.parse_gpx_file(f)
+                    data = fit_lib.parse_fit_file(f)
                     activity_date = data["start_date"].date() if hasattr(data["start_date"], "date") else data["start_date"]
+
+                    deterministic = fit_lib.deterministic_description(data)
+                    description = llm_lib.enhance_workout_description(deterministic)
+
                     Workout.objects.update_or_create(
-                        external_ref=f"gpx:{f.name}:{data['start_date'].isoformat()}",
-                        source="gpx",
+                        external_ref=f"fit:{f.name}:{data['start_date'].isoformat()}",
+                        source="fit",
                         defaults={
                             "date": activity_date,
                             "title": data["name"],
                             "workout_type": data["activity_type"],
                             "status": "completed",
+                            "description": description,
                             "distance_km": data["distance_km"],
                             "moving_time_min": data["moving_time_min"],
                             "avg_hr": data["avg_hr"],
                             "max_hr": data["max_hr"],
+                            "hr_min": data["hr_min"],
+                            "avg_speed_kmh": data["avg_speed_kmh"],
                             "elevation_gain_m": data["elevation_gain_m"],
+                            "interval_repeats": data["interval_repeats"],
+                            "interval_distance_m": data["interval_distance_m"],
+                            "interval_rest_seconds": data["interval_rest_seconds"],
+                            "laps_json": data["laps"],
                         },
                     )
                     imported += 1
@@ -359,5 +378,5 @@ def gpx_upload(request):
                 messages.error(request, f"Couldn't import {msg}")
             return redirect("dashboard")
     else:
-        form = GpxUploadForm()
-    return render(request, "coach/gpx_upload.html", {"form": form})
+        form = FitUploadForm()
+    return render(request, "coach/fit_upload.html", {"form": form})

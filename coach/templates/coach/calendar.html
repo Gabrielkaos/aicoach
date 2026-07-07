@@ -28,8 +28,18 @@
                 <div class="text-slate-400 mt-1">
                   {% if w.distance_km %}{{ w.distance_km|floatformat:1 }}km{% endif %}
                   {% if w.moving_time_min %} · {{ w.moving_time_min|floatformat:0 }}min{% endif %}
-                  {% if w.avg_hr %} · hr {{ w.avg_hr|floatformat:0 }}{% endif %}
+                  {% if w.avg_speed_kmh %} · {{ w.avg_speed_kmh|floatformat:1 }}km/h{% endif %}
+                  {% if w.hr_min and w.avg_hr and w.hr_min != w.avg_hr %}
+                    · hr {{ w.hr_min|floatformat:0 }}-{{ w.max_hr|default:w.avg_hr|floatformat:0 }}
+                  {% elif w.avg_hr %}
+                    · hr {{ w.avg_hr|floatformat:0 }}
+                  {% endif %}
                 </div>
+                {% if w.interval_repeats %}
+                  <div class="text-slate-400">
+                    {{ w.interval_repeats }}x{% if w.interval_distance_m %} {{ w.interval_distance_m|floatformat:0 }}m{% endif %}{% if w.interval_rest_seconds %}, {{ w.interval_rest_seconds|floatformat:0 }}s rest{% endif %}
+                  </div>
+                {% endif %}
               {% endif %}
               <div class="flex gap-2 mt-2">
                 <form method="post" action="{% url 'workout_set_status' w.pk %}">

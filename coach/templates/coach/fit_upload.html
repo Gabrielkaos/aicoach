@@ -1,0 +1,28 @@
+{% extends "coach/base.html" %}
+{% block title %}Import FIT - AI Coach{% endblock %}
+{% block content %}
+
+<div class="card p-6 max-w-xl mx-auto">
+  <h1 class="text-lg font-semibold mb-2">Import activities from FIT</h1>
+  <p class="text-sm text-slate-500 mb-4">
+    Upload FIT files exported from Zepp, Garmin, or any device/app. FIT carries richer data than
+    GPX - lap splits, heart-rate range, pace, and real interval structure (reps, distance, rest)
+    when your watch was manually lapped during a workout. Stats are extracted automatically, a
+    short description is generated, and it's added directly to your calendar as a completed
+    workout - one place for the coach to look, no separate activity feed.
+  </p>
+
+  <form method="post" enctype="multipart/form-data" class="space-y-3">
+    {% csrf_token %}
+    <div>
+      <label class="block text-xs font-medium text-slate-500 mb-1">{{ form.fit_files.label }}</label>
+      {{ form.fit_files }}
+      <p class="text-xs text-slate-400 mt-1">{{ form.fit_files.help_text }}</p>
+    </div>
+    <button class="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700">
+      Upload &amp; import
+    </button>
+  </form>
+</div>
+
+{% endblock %}
