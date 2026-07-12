@@ -7,6 +7,8 @@ INPUT_CLS = "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:o
 
 
 class SignupForm(UserCreationForm):
+    website = forms.CharField(required=False, widget=forms.HiddenInput())
+
     class Meta(UserCreationForm.Meta):
         model = User
         fields = ("email",)
@@ -19,3 +21,8 @@ class SignupForm(UserCreationForm):
         self.fields["password1"].widget.attrs.update({"class": INPUT_CLS})
         self.fields["password2"].widget.attrs.update({"class": INPUT_CLS})
         self.fields["password1"].help_text = "At least 8 characters, not too common or all-numeric."
+
+    def clean_website(self):
+        if self.cleaned_data.get("website"):
+            raise forms.ValidationError("Spam detected.")
+        return self.cleaned_data.get("website")

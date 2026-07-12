@@ -24,4 +24,5 @@ urlpatterns = [
     path("chat/<int:session_id>/delete/", views.chat_delete, name="chat_delete"),
 
     path("fit/upload/", views.fit_upload, name="fit_upload"),
+    path("settings/ai/", views.llm_settings_view, name="llm_settings"),
 ]

@@ -73,9 +73,9 @@ STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --- App-specific settings ---
-LLM_API_BASE = os.environ.get("LLM_API_BASE", "https://api.groq.com/openai/v1")
-LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
-LLM_MODEL = os.environ.get("LLM_MODEL", "llama-3.3-70b-versatile")
+# LLM_API_BASE = os.environ.get("LLM_API_BASE", "https://api.groq.com/openai/v1")
+# LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
+# LLM_MODEL = os.environ.get("LLM_MODEL", "llama-3.3-70b-versatile")
 
 # LOGIN_URL = "/admin/login/"
 LOGIN_URL = "login"
@@ -83,3 +83,11 @@ LOGIN_REDIRECT_URL = "dashboard"
 LOGOUT_REDIRECT_URL = "login"
 
 AUTH_USER_MODEL = "accounts.User"
+
+EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", 587))
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "True") == "True"
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "AI Coach <noreply@example.com>")

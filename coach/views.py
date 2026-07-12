@@ -1,5 +1,5 @@
 from datetime import date, timedelta
-
+from django_ratelimit.decorators import ratelimit
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
@@ -9,8 +9,8 @@ from django.views.decorators.http import require_POST
 from . import llm as llm_lib
 from . import fit as fit_lib
 from . import analytics
-from .forms import DailyMetricForm, WorkoutForm, ActiveConditionForm, FitUploadForm, ProfileForm, GoalForm
-from .models import DailyMetric, ActiveCondition, Workout, ChatMessage, ChatSession, AthleteProfile, Goal
+from .forms import DailyMetricForm, WorkoutForm, ActiveConditionForm, FitUploadForm, ProfileForm, GoalForm, LLMSettingsForm
+from .models import DailyMetric, ActiveCondition, Workout, ChatMessage, ChatSession, AthleteProfile, Goal, LLMSettings
 
 
 def _metrics_window(user, days=30):
@@ -233,6 +233,7 @@ def chat_new(request):
 
 @login_required
 @require_POST
+@ratelimit(key="user", rate="30/h", block=True)
 def chat_send(request, session_id):
     session = get_object_or_404(ChatSession, pk=session_id, user=request.user)
     user_text = request.POST.get("message", "").strip()
@@ -246,6 +247,7 @@ def chat_send(request, session_id):
     metrics_qs = _metrics_window(request.user, days=30)
     active_conditions = list(ActiveCondition.objects.filter(user=request.user, resolved=False))
     profile = _get_profile(request.user)
+    llm_settings, _ = LLMSettings.objects.get_or_create(user=request.user)
     goal = _next_goal(request.user)
 
     context_str = llm_lib.build_context(
@@ -271,7 +273,7 @@ def chat_send(request, session_id):
     for m in history:
         messages_payload.append({"role": m.role, "content": m.content})
 
-    raw_reply = llm_lib.call_llm(messages_payload)
+    raw_reply = llm_lib.call_llm(messages_payload, llm_settings.api_base, llm_settings.api_key, llm_settings.model)
     cleaned_reply, workouts_data = llm_lib.extract_workout_blocks(raw_reply)
     cleaned_reply, actions_data = llm_lib.extract_workout_actions(cleaned_reply)
 
@@ -352,13 +354,16 @@ def fit_upload(request):
         form = FitUploadForm(request.POST, request.FILES)
         if form.is_valid():
             imported, failed = 0, []
+            llm_settings, _ = LLMSettings.objects.get_or_create(user=request.user)
             for f in form.cleaned_data["fit_files"]:
                 try:
                     data = fit_lib.parse_fit_file(f)
                     activity_date = data["start_date"].date() if hasattr(data["start_date"], "date") else data["start_date"]
 
                     deterministic = fit_lib.deterministic_description(data)
-                    description = llm_lib.enhance_workout_description(deterministic)
+                    description = llm_lib.enhance_workout_description(
+                        deterministic, llm_settings.api_base, llm_settings.api_key, llm_settings.model
+                    )
 
                     Workout.objects.update_or_create(
                         user=request.user,
@@ -395,3 +400,16 @@ def fit_upload(request):
     else:
         form = FitUploadForm()
     return render(request, "coach/fit_upload.html", {"form": form})
+
+@login_required
+def llm_settings_view(request):
+    llm_settings, _ = LLMSettings.objects.get_or_create(user=request.user)
+    if request.method == "POST":
+        form = LLMSettingsForm(request.POST, instance=llm_settings)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Saved your AI connection settings.")
+            return redirect("llm_settings")
+    else:
+        form = LLMSettingsForm(instance=llm_settings)
+    return render(request, "coach/llm_settings.html", {"form": form, "configured": llm_settings.is_configured()})

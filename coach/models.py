@@ -2,6 +2,25 @@ from django.conf import settings
 from django.db import models
 
 
+class LLMSettings(models.Model):
+    """Per-user LLM connection - each account brings its own API key, so nobody shares your
+    Groq quota. Defaults are prefilled toward Groq's free tier, but any OpenAI-compatible
+    endpoint works (OpenRouter, Together, a local Ollama server, etc)."""
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="llm_settings")
+    api_base = models.URLField(default="https://api.groq.com/openai/v1",
+                                help_text="OpenAI-compatible base URL, e.g. https://api.groq.com/openai/v1")
+    api_key = models.CharField(max_length=255, blank=True, help_text="Your own API key - never shared with other users")
+    model = models.CharField(max_length=100, default="llama-3.3-70b-versatile",
+                              help_text="e.g. llama-3.3-70b-versatile (Groq), or a model id from your provider")
+
+    def __str__(self):
+        return f"LLM settings for {self.user.email}"
+
+    def is_configured(self):
+        return bool(self.api_key)
+
+
 class DailyMetric(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="daily_metrics")
     date = models.DateField()

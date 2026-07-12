@@ -3,6 +3,18 @@ from .models import DailyMetric, Workout, ActiveCondition, AthleteProfile, Goal
 
 INPUT_CLS = "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
 
+from .models import LLMSettings
+
+class LLMSettingsForm(forms.ModelForm):
+    class Meta:
+        model = LLMSettings
+        fields = ["api_base", "api_key", "model"]
+        widgets = {
+            "api_base": forms.URLInput(attrs={"class": INPUT_CLS}),
+            "api_key": forms.PasswordInput(attrs={"class": INPUT_CLS, "placeholder": "gsk_..."}, render_value=True),
+            "model": forms.TextInput(attrs={"class": INPUT_CLS}),
+        }
+
 
 class DailyMetricForm(forms.ModelForm):
     class Meta:

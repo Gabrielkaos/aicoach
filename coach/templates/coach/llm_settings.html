@@ -1,0 +1,36 @@
+{% extends "coach/base.html" %}
+{% block title %}AI Settings - AI Coach{% endblock %}
+{% block content %}
+
+<div class="card p-6 max-w-xl mx-auto">
+  <h1 class="text-lg font-semibold mb-2">AI Settings</h1>
+  <p class="text-sm text-slate-500 mb-4">
+    Your chat coach uses your own API key - nobody else's usage counts against it, and yours
+    doesn't count against anyone else's. Get a free key from
+    <a href="https://console.groq.com" target="_blank" class="text-emerald-600 hover:underline">Groq</a>
+    (fast, generous free tier, works with the default settings below) or point this at any other
+    OpenAI-compatible provider (OpenRouter, Together.ai, a local Ollama server, etc).
+  </p>
+
+  {% if not configured %}
+    <div class="mb-4 px-4 py-2 rounded-lg text-sm bg-amber-50 text-amber-800 border-l-4 border-amber-400">
+      No API key set yet - chat won't work until you add one below.
+    </div>
+  {% endif %}
+
+  <form method="post" class="space-y-3">
+    {% csrf_token %}
+    {% for field in form %}
+      <div>
+        <label class="block text-xs font-medium text-slate-500 mb-1">{{ field.label }}</label>
+        {{ field }}
+        {% if field.help_text %}<p class="text-xs text-slate-400 mt-1">{{ field.help_text }}</p>{% endif %}
+      </div>
+    {% endfor %}
+    <button class="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700">
+      Save
+    </button>
+  </form>
+</div>
+
+{% endblock %}

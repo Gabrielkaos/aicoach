@@ -260,47 +260,33 @@ def extract_workout_actions(text):
     return cleaned, actions
 
 
-def enhance_workout_description(deterministic_summary):
-    """One small LLM call at ingest time to turn computed FIT stats into a natural sentence or
-    two - the 'pre-process once, so the main chat only sees a compact summary' step. This is the
-    same architectural idea as an ingest-time embedding/summarization stage in a RAG pipeline; it
-    just uses a short LLM call over deterministic stats rather than vector embeddings, since
-    embeddings are built for semantic text retrieval and don't apply well to numeric time-series
-    data like a heart-rate/pace stream. Falls back to the plain deterministic text if the LLM
-    isn't configured or the call fails, so an upload never breaks on this step."""
+def enhance_workout_description(deterministic_summary, api_base, api_key, model):
     prompt = (
         "Rewrite these computed workout stats as one or two short, natural sentences for a "
         "training log entry. Do not invent any numbers that aren't given here, and don't add "
         "commentary or advice - just describe what happened.\n\nStats: " + deterministic_summary
     )
     try:
-        text = call_llm([{"role": "user", "content": prompt}])
+        text = call_llm([{"role": "user", "content": prompt}], api_base, api_key, model)
     except Exception:
         return deterministic_summary
-    if not text or text.startswith("Sorry,") or text.startswith("I don't have an LLM"):
+    if not text or text.startswith("Sorry,") or text.startswith("You haven't"):
         return deterministic_summary
     return text.strip()
 
 
-def call_llm(messages):
-    """messages: list of {"role": "system"|"user"|"assistant", "content": str}"""
-    if not settings.LLM_API_KEY:
+def call_llm(messages, api_base, api_key, model):
+    """messages: list of {"role": "system"|"user"|"assistant", "content": str}
+    api_base/api_key/model: this user's own LLM connection, from their LLMSettings row."""
+    if not api_key:
         return (
-            "I don't have an LLM API key configured yet. Add LLM_API_KEY to your .env file "
-            "(a free Groq key from https://console.groq.com works well) and reload."
+            "You haven't set up your AI connection yet. Go to Settings → AI Settings and add "
+            "your own API key (a free Groq key from https://console.groq.com works well)."
         )
 
-    url = f"{settings.LLM_API_BASE.rstrip('/')}/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {settings.LLM_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": settings.LLM_MODEL,
-        "messages": messages,
-        "temperature": 0.6,
-        "max_tokens": 1600,
-    }
+    url = f"{api_base.rstrip('/')}/chat/completions"
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    payload = {"model": model, "messages": messages, "temperature": 0.6, "max_tokens": 1600}
     try:
         resp = requests.post(url, headers=headers, json=payload, timeout=30)
         resp.raise_for_status()
