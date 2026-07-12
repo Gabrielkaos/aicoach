@@ -6,3 +6,6 @@
 migrations/
 
 *.pyc
+
+*.sqlite3
+aicoach/__pycache__/*

@@ -1,0 +1,36 @@
+{% extends "coach/base.html" %}
+{% block title %}Sign in - AI Coach{% endblock %}
+{% block content %}
+
+<div class="flex items-center justify-center py-12">
+  <div class="card p-8 w-full max-w-sm">
+    <h1 class="text-xl font-semibold mb-1 text-center">🏃 AI Coach</h1>
+    <p class="text-sm text-slate-500 mb-6 text-center">Sign in to continue</p>
+
+    {% if form.errors %}
+      <div class="mb-4 px-4 py-2 rounded-lg text-sm bg-red-100 text-red-700">
+        Incorrect username or password.
+      </div>
+    {% endif %}
+
+    <form method="post">
+      {% csrf_token %}
+      <div class="mb-4">
+        <label class="block text-xs font-medium text-slate-500 mb-1" for="id_username">Username</label>
+        <input type="text" name="username" id="id_username" autofocus required
+          class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+      </div>
+      <div class="mb-6">
+        <label class="block text-xs font-medium text-slate-500 mb-1" for="id_password">Password</label>
+        <input type="password" name="password" id="id_password" required
+          class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+      </div>
+      <input type="hidden" name="next" value="{{ next }}">
+      <button class="w-full bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700">
+        Sign in
+      </button>
+    </form>
+  </div>
+</div>
+
+{% endblock %}

@@ -8,17 +8,62 @@
 <style>
   body { font-family: 'Inter', system-ui, sans-serif; }
   .card { background: white; border-radius: 0.75rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  input[type="text"], input[type="password"] {
+    width: 100%; border-radius: 0.5rem; border: 1px solid #cbd5e1;
+    padding: 0.5rem 0.75rem; font-size: 0.875rem;
+  }
+  input[type="text"]:focus, input[type="password"]:focus {
+    outline: none; box-shadow: 0 0 0 2px #10b981;
+  }
 </style>
 </head>
 <body class="bg-slate-100 min-h-screen text-slate-800">
-<nav class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
-  <a href="{% url 'dashboard' %}" class="font-bold text-lg">🏃 AI Coach</a>
-  <div class="space-x-4 text-sm">
+<nav class="bg-slate-900 text-white px-4 sm:px-6 py-4">
+  <div class="flex items-center justify-between">
+    <a href="{% url 'dashboard' %}" class="font-bold text-lg">🏃 AI Coach</a>
+
+    <!-- Desktop links -->
+    <div class="hidden md:flex items-center space-x-4 text-sm">
+      <a href="{% url 'dashboard' %}" class="hover:text-emerald-400">Dashboard</a>
+      <a href="{% url 'calendar' %}" class="hover:text-emerald-400">Calendar</a>
+      <a href="{% url 'chat' %}" class="hover:text-emerald-400">Chat</a>
+      <a href="{% url 'fit_upload' %}" class="hover:text-emerald-400">Import FIT</a>
+      <a href="/admin/" class="hover:text-emerald-400">Admin</a>
+      {% if user.is_authenticated %}
+        <span class="text-slate-500">|</span>
+        <span class="text-slate-400">{{ user.username }}</span>
+        <a href="{% url 'password_change' %}" class="hover:text-emerald-400">Password</a>
+        <form method="post" action="{% url 'logout' %}" class="inline">
+          {% csrf_token %}
+          <button class="hover:text-emerald-400">Sign out</button>
+        </form>
+      {% endif %}
+    </div>
+
+    <!-- Mobile hamburger -->
+    <button id="nav-toggle" class="md:hidden p-2 -mr-2" aria-label="Menu">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+      </svg>
+    </button>
+  </div>
+
+  <!-- Mobile menu -->
+  <div id="nav-menu" class="hidden md:hidden mt-3 flex flex-col space-y-3 text-sm pb-1">
     <a href="{% url 'dashboard' %}" class="hover:text-emerald-400">Dashboard</a>
     <a href="{% url 'calendar' %}" class="hover:text-emerald-400">Calendar</a>
     <a href="{% url 'chat' %}" class="hover:text-emerald-400">Chat</a>
     <a href="{% url 'fit_upload' %}" class="hover:text-emerald-400">Import FIT</a>
     <a href="/admin/" class="hover:text-emerald-400">Admin</a>
+    {% if user.is_authenticated %}
+      <hr class="border-slate-700">
+      <span class="text-slate-400">Signed in as {{ user.username }}</span>
+      <a href="{% url 'password_change' %}" class="hover:text-emerald-400">Change password</a>
+      <form method="post" action="{% url 'logout' %}">
+        {% csrf_token %}
+        <button class="hover:text-emerald-400 text-left">Sign out</button>
+      </form>
+    {% endif %}
   </div>
 </nav>
 

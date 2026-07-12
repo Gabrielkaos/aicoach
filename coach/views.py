@@ -4,7 +4,7 @@ from django.contrib import messages
 from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views.decorators.http import require_POST
-
+from django.contrib.auth.decorators import login_required
 from . import llm as llm_lib
 from . import fit as fit_lib
 from . import analytics
@@ -28,7 +28,7 @@ def _get_profile():
 def _next_goal():
     return Goal.objects.filter(event_date__gte=date.today()).order_by("event_date").first()
 
-
+@login_required
 def dashboard(request):
     if request.method == "POST":
         form = DailyMetricForm(request.POST)
@@ -77,7 +77,7 @@ def dashboard(request):
         "today": date.today(),
     })
 
-
+@login_required
 def metric_delete(request, pk):
     get_object_or_404(DailyMetric, pk=pk).delete()
     messages.success(request, "Deleted metric entry.")
@@ -138,7 +138,7 @@ def goal_delete(request, pk):
     get_object_or_404(Goal, pk=pk).delete()
     return redirect("dashboard")
 
-
+@login_required
 def calendar_view(request):
     week_offset = int(request.GET.get("week", 0))
     today = date.today()
@@ -169,7 +169,7 @@ def calendar_view(request):
         "today": today,
     })
 
-
+@login_required
 @require_POST
 def workout_set_status(request, pk):
     workout = get_object_or_404(Workout, pk=pk)
@@ -179,7 +179,7 @@ def workout_set_status(request, pk):
         workout.save()
     return redirect(request.META.get("HTTP_REFERER", "calendar"))
 
-
+@login_required
 @require_POST
 def workout_delete(request, pk):
     get_object_or_404(Workout, pk=pk).delete()
@@ -187,7 +187,7 @@ def workout_delete(request, pk):
 
 
 # --- Chat ---
-
+@login_required
 def chat_view(request, session_id=None):
     sessions = ChatSession.objects.all()
     if session_id:
@@ -205,7 +205,7 @@ def chat_view(request, session_id=None):
         "chat_history": chat_history,
     })
 
-
+@login_required
 @require_POST
 def chat_new(request):
     mode = request.POST.get("mode", "planner")
@@ -216,6 +216,7 @@ def chat_new(request):
     return redirect("chat_session", session_id=session.pk)
 
 
+@login_required
 @require_POST
 def chat_send(request, session_id):
     session = get_object_or_404(ChatSession, pk=session_id)
@@ -324,7 +325,7 @@ def chat_send(request, session_id):
         "changes": len(change_summaries),
     })
 
-
+@login_required
 @require_POST
 def chat_delete(request, session_id):
     get_object_or_404(ChatSession, pk=session_id).delete()
@@ -332,7 +333,7 @@ def chat_delete(request, session_id):
 
 
 # --- FIT import ---
-
+@login_required
 def fit_upload(request):
     if request.method == "POST":
         form = FitUploadForm(request.POST, request.FILES)
