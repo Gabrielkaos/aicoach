@@ -5,12 +5,20 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views.decorators.http import require_POST
+from django.urls import reverse_lazy
+from django.contrib.auth.views import PasswordChangeView
 
 from . import llm as llm_lib
 from . import fit as fit_lib
 from . import analytics
-from .forms import DailyMetricForm, WorkoutForm, ActiveConditionForm, FitUploadForm, ProfileForm, GoalForm, LLMSettingsForm
+from .forms import DailyMetricForm, WorkoutForm, ActiveConditionForm, FitUploadForm, ProfileForm, GoalForm, LLMSettingsForm, StyledPasswordChangeForm
 from .models import DailyMetric, ActiveCondition, Workout, ChatMessage, ChatSession, AthleteProfile, Goal, LLMSettings
+
+
+class StyledPasswordChangeView(PasswordChangeView):
+    form_class = StyledPasswordChangeForm
+    template_name = "coach/password_change.html"
+    success_url = reverse_lazy("password_change_done")
 
 
 def _metrics_window(user, days=30):

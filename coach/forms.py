@@ -4,6 +4,14 @@ from .models import DailyMetric, Workout, ActiveCondition, AthleteProfile, Goal
 INPUT_CLS = "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
 
 from .models import LLMSettings
+from django.contrib.auth.forms import PasswordChangeForm
+
+
+class StyledPasswordChangeForm(PasswordChangeForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs.update({"class": INPUT_CLS})
 
 class LLMSettingsForm(forms.ModelForm):
     class Meta:
