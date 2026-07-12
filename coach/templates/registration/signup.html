@@ -1,0 +1,39 @@
+{% extends "coach/base.html" %}
+{% block title %}Sign up - AI Coach{% endblock %}
+{% block content %}
+
+<div class="flex items-center justify-center py-12">
+  <div class="card p-8 w-full max-w-sm">
+    <h1 class="text-xl font-semibold mb-1 text-center">🏃 AI Coach</h1>
+    <p class="text-sm text-slate-500 mb-6 text-center">Create your account</p>
+
+    {% if form.non_field_errors %}
+      <div class="mb-4 px-4 py-2 rounded-lg text-sm bg-red-100 text-red-700">
+        {{ form.non_field_errors }}
+      </div>
+    {% endif %}
+
+    <form method="post">
+      {% csrf_token %}
+      {% for field in form %}
+        <div class="mb-4">
+          <label class="block text-xs font-medium text-slate-500 mb-1">{{ field.label }}</label>
+          {{ field }}
+          {% if field.help_text %}<p class="text-xs text-slate-400 mt-1">{{ field.help_text }}</p>{% endif %}
+          {% for error in field.errors %}
+            <p class="text-xs text-red-500 mt-1">{{ error }}</p>
+          {% endfor %}
+        </div>
+      {% endfor %}
+      <button class="w-full bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700">
+        Create account
+      </button>
+    </form>
+
+    <p class="text-xs text-slate-400 text-center mt-4">
+      Already have an account? <a href="{% url 'login' %}" class="text-emerald-600 hover:underline">Sign in</a>
+    </p>
+  </div>
+</div>
+
+{% endblock %}

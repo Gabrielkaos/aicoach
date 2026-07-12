@@ -1,10 +1,11 @@
 from datetime import date, timedelta
 
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views.decorators.http import require_POST
-from django.contrib.auth.decorators import login_required
+
 from . import llm as llm_lib
 from . import fit as fit_lib
 from . import analytics
@@ -12,21 +13,18 @@ from .forms import DailyMetricForm, WorkoutForm, ActiveConditionForm, FitUploadF
 from .models import DailyMetric, ActiveCondition, Workout, ChatMessage, ChatSession, AthleteProfile, Goal
 
 
-def _metrics_window(days=30):
-    """Single shared query for 'recent metrics' - used for display, baselines, and flags alike,
-    so there's one window definition instead of several different hardcoded slices."""
-    return list(DailyMetric.objects.filter(date__gte=date.today() - timedelta(days=days)).order_by("-date"))
+def _metrics_window(user, days=30):
+    return list(DailyMetric.objects.filter(user=user, date__gte=date.today() - timedelta(days=days)).order_by("-date"))
 
 
-def _get_profile():
-    profile = AthleteProfile.objects.first()
-    if not profile:
-        profile = AthleteProfile.objects.create()
+def _get_profile(user):
+    profile, _ = AthleteProfile.objects.get_or_create(user=user)
     return profile
 
 
-def _next_goal():
-    return Goal.objects.filter(event_date__gte=date.today()).order_by("event_date").first()
+def _next_goal(user):
+    return Goal.objects.filter(user=user, event_date__gte=date.today()).order_by("event_date").first()
+
 
 @login_required
 def dashboard(request):
@@ -34,6 +32,7 @@ def dashboard(request):
         form = DailyMetricForm(request.POST)
         if form.is_valid():
             metric, _ = DailyMetric.objects.update_or_create(
+                user=request.user,
                 date=form.cleaned_data["date"],
                 defaults={k: v for k, v in form.cleaned_data.items() if k != "date"},
             )
@@ -42,21 +41,20 @@ def dashboard(request):
     else:
         form = DailyMetricForm(initial={"date": date.today()})
 
-    all_recent_metrics = _metrics_window(days=30)  # used for baselines + flags
-    display_metrics = all_recent_metrics[:14]       # what actually shows in the table
-    recent_workouts = Workout.objects.filter(status="completed").order_by("-date")[:10]
-    active_conditions = ActiveCondition.objects.filter(resolved=False)
+    all_recent_metrics = _metrics_window(request.user, days=30)
+    display_metrics = all_recent_metrics[:14]
+    recent_workouts = Workout.objects.filter(user=request.user, status="completed").order_by("-date")[:10]
+    active_conditions = ActiveCondition.objects.filter(user=request.user, resolved=False)
     condition_form = ActiveConditionForm(initial={"start_date": date.today()})
 
-    profile = _get_profile()
+    profile = _get_profile(request.user)
     profile_form = ProfileForm(instance=profile)
-    goal = _next_goal()
+    goal = _next_goal(request.user)
     goal_form = GoalForm(initial={"event_date": date.today()})
-    upcoming_goals = Goal.objects.filter(event_date__gte=date.today())
+    upcoming_goals = Goal.objects.filter(user=request.user, event_date__gte=date.today())
 
     flags = analytics.compute_flags(all_recent_metrics, active_conditions, today=date.today())
 
-    # Sparklines want oldest-first
     chronological = list(reversed(display_metrics))
     hrv_svg = analytics.sparkline_svg([(m.date, m.hrv) for m in chronological], color="#059669")
     rhr_svg = analytics.sparkline_svg([(m.date, m.rhr) for m in chronological], color="#e11d48")
@@ -77,42 +75,49 @@ def dashboard(request):
         "today": date.today(),
     })
 
+
 @login_required
 def metric_delete(request, pk):
-    get_object_or_404(DailyMetric, pk=pk).delete()
+    get_object_or_404(DailyMetric, pk=pk, user=request.user).delete()
     messages.success(request, "Deleted metric entry.")
     return redirect("dashboard")
 
 
+@login_required
 @require_POST
 def active_condition_add(request):
     form = ActiveConditionForm(request.POST)
     if form.is_valid():
-        form.save()
+        condition = form.save(commit=False)
+        condition.user = request.user
+        condition.save()
         messages.success(request, "Added active condition.")
     else:
         messages.error(request, "Couldn't save that condition - check the dates.")
     return redirect("dashboard")
 
 
+@login_required
 @require_POST
 def active_condition_resolve(request, pk):
-    condition = get_object_or_404(ActiveCondition, pk=pk)
+    condition = get_object_or_404(ActiveCondition, pk=pk, user=request.user)
     condition.resolved = True
     condition.save()
     messages.success(request, f"Marked '{condition.title}' as resolved.")
     return redirect("dashboard")
 
 
+@login_required
 @require_POST
 def active_condition_delete(request, pk):
-    get_object_or_404(ActiveCondition, pk=pk).delete()
+    get_object_or_404(ActiveCondition, pk=pk, user=request.user).delete()
     return redirect("dashboard")
 
 
+@login_required
 @require_POST
 def profile_update(request):
-    profile = _get_profile()
+    profile = _get_profile(request.user)
     form = ProfileForm(request.POST, instance=profile)
     if form.is_valid():
         form.save()
@@ -122,21 +127,26 @@ def profile_update(request):
     return redirect("dashboard")
 
 
+@login_required
 @require_POST
 def goal_add(request):
     form = GoalForm(request.POST)
     if form.is_valid():
-        form.save()
+        goal = form.save(commit=False)
+        goal.user = request.user
+        goal.save()
         messages.success(request, "Added goal.")
     else:
         messages.error(request, "Couldn't save that goal - check the date.")
     return redirect("dashboard")
 
 
+@login_required
 @require_POST
 def goal_delete(request, pk):
-    get_object_or_404(Goal, pk=pk).delete()
+    get_object_or_404(Goal, pk=pk, user=request.user).delete()
     return redirect("dashboard")
+
 
 @login_required
 def calendar_view(request):
@@ -145,7 +155,7 @@ def calendar_view(request):
     start_of_week = today - timedelta(days=today.weekday()) + timedelta(weeks=week_offset)
     days = [start_of_week + timedelta(days=i) for i in range(7)]
 
-    workouts = Workout.objects.filter(date__gte=days[0], date__lte=days[-1])
+    workouts = Workout.objects.filter(user=request.user, date__gte=days[0], date__lte=days[-1])
     workouts_by_day = {d: [] for d in days}
     for w in workouts:
         workouts_by_day.setdefault(w.date, []).append(w)
@@ -154,6 +164,7 @@ def calendar_view(request):
         form = WorkoutForm(request.POST)
         if form.is_valid():
             workout = form.save(commit=False)
+            workout.user = request.user
             workout.source = "manual"
             workout.save()
             messages.success(request, "Workout added to calendar.")
@@ -169,33 +180,36 @@ def calendar_view(request):
         "today": today,
     })
 
+
 @login_required
 @require_POST
 def workout_set_status(request, pk):
-    workout = get_object_or_404(Workout, pk=pk)
+    workout = get_object_or_404(Workout, pk=pk, user=request.user)
     status = request.POST.get("status")
     if status in dict(Workout.STATUS_CHOICES):
         workout.status = status
         workout.save()
     return redirect(request.META.get("HTTP_REFERER", "calendar"))
 
+
 @login_required
 @require_POST
 def workout_delete(request, pk):
-    get_object_or_404(Workout, pk=pk).delete()
+    get_object_or_404(Workout, pk=pk, user=request.user).delete()
     return redirect(request.META.get("HTTP_REFERER", "calendar"))
 
 
 # --- Chat ---
+
 @login_required
 def chat_view(request, session_id=None):
-    sessions = ChatSession.objects.all()
+    sessions = ChatSession.objects.filter(user=request.user)
     if session_id:
-        session = get_object_or_404(ChatSession, pk=session_id)
+        session = get_object_or_404(ChatSession, pk=session_id, user=request.user)
     else:
         session = sessions.first()
         if not session:
-            session = ChatSession.objects.create(title="New chat", mode="planner")
+            session = ChatSession.objects.create(user=request.user, title="New chat", mode="planner")
         return redirect("chat_session", session_id=session.pk)
 
     chat_history = session.messages.all()
@@ -205,6 +219,7 @@ def chat_view(request, session_id=None):
         "chat_history": chat_history,
     })
 
+
 @login_required
 @require_POST
 def chat_new(request):
@@ -212,14 +227,14 @@ def chat_new(request):
     if mode not in dict(ChatSession.MODE_CHOICES):
         mode = "planner"
     title = "Just asking" if mode == "ask" else "Planning"
-    session = ChatSession.objects.create(title=title, mode=mode)
+    session = ChatSession.objects.create(user=request.user, title=title, mode=mode)
     return redirect("chat_session", session_id=session.pk)
 
 
 @login_required
 @require_POST
 def chat_send(request, session_id):
-    session = get_object_or_404(ChatSession, pk=session_id)
+    session = get_object_or_404(ChatSession, pk=session_id, user=request.user)
     user_text = request.POST.get("message", "").strip()
     if not user_text:
         return JsonResponse({"error": "Empty message"}, status=400)
@@ -227,11 +242,11 @@ def chat_send(request, session_id):
     ChatMessage.objects.create(session=session, role="user", content=user_text)
 
     today = date.today()
-    workouts_qs = list(Workout.objects.filter(date__gte=today - timedelta(days=14)).order_by("date")[:60])
-    metrics_qs = _metrics_window(days=30)
-    active_conditions = list(ActiveCondition.objects.filter(resolved=False))
-    profile = _get_profile()
-    goal = _next_goal()
+    workouts_qs = list(Workout.objects.filter(user=request.user, date__gte=today - timedelta(days=14)).order_by("date")[:60])
+    metrics_qs = _metrics_window(request.user, days=30)
+    active_conditions = list(ActiveCondition.objects.filter(user=request.user, resolved=False))
+    profile = _get_profile(request.user)
+    goal = _next_goal(request.user)
 
     context_str = llm_lib.build_context(
         metrics_qs=metrics_qs,
@@ -266,12 +281,8 @@ def chat_send(request, session_id):
         for workout_data in workouts_data:
             if not (workout_data.get("date") and workout_data.get("title")):
                 continue
-            # Duplicate guard: keyed on (date, workout_type) so a same-day re-plan of the SAME
-            # type of session (e.g. re-suggesting today's cycling ride) updates in place, but two
-            # different types on the same day (e.g. cycling + strength) are both kept - fixed
-            # after this used to be keyed on date alone, which let a second workout on the same
-            # day silently overwrite the first regardless of type.
             workout, created = Workout.objects.update_or_create(
+                user=request.user,
                 date=workout_data["date"],
                 source="llm",
                 workout_type=workout_data.get("workout_type", ""),
@@ -294,7 +305,7 @@ def chat_send(request, session_id):
 
         for action in actions_data:
             workout_id = action.get("id")
-            workout = Workout.objects.filter(pk=workout_id).first() if workout_id else None
+            workout = Workout.objects.filter(pk=workout_id, user=request.user).first() if workout_id else None
             if not workout:
                 change_summaries.append(f"Couldn't find a calendar entry with id={workout_id}")
                 continue
@@ -325,14 +336,16 @@ def chat_send(request, session_id):
         "changes": len(change_summaries),
     })
 
+
 @login_required
 @require_POST
 def chat_delete(request, session_id):
-    get_object_or_404(ChatSession, pk=session_id).delete()
+    get_object_or_404(ChatSession, pk=session_id, user=request.user).delete()
     return redirect("chat")
 
 
 # --- FIT import ---
+
 @login_required
 def fit_upload(request):
     if request.method == "POST":
@@ -348,6 +361,7 @@ def fit_upload(request):
                     description = llm_lib.enhance_workout_description(deterministic)
 
                     Workout.objects.update_or_create(
+                        user=request.user,
                         external_ref=f"fit:{f.name}:{data['start_date'].isoformat()}",
                         source="fit",
                         defaults={

@@ -31,7 +31,7 @@
       <a href="/admin/" class="hover:text-emerald-400">Admin</a>
       {% if user.is_authenticated %}
         <span class="text-slate-500">|</span>
-        <span class="text-slate-400">{{ user.username }}</span>
+        <span class="text-slate-400">{{ user.email }}</span>
         <a href="{% url 'password_change' %}" class="hover:text-emerald-400">Password</a>
         <form method="post" action="{% url 'logout' %}" class="inline">
           {% csrf_token %}

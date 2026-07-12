@@ -1,10 +1,10 @@
+from django.conf import settings
 from django.db import models
 
 
 class DailyMetric(models.Model):
-    """Daily wellness metrics - entered manually."""
-
-    date = models.DateField(unique=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="daily_metrics")
+    date = models.DateField()
     hrv = models.FloatField(null=True, blank=True, help_text="ms")
     rhr = models.PositiveIntegerField(null=True, blank=True, help_text="resting heart rate, bpm")
     sleep_hours = models.FloatField(null=True, blank=True)
@@ -16,15 +16,16 @@ class DailyMetric(models.Model):
 
     class Meta:
         ordering = ["-date"]
+        constraints = [
+            models.UniqueConstraint(fields=["user", "date"], name="unique_metric_per_user_per_day"),
+        ]
 
     def __str__(self):
         return f"Metrics for {self.date}"
 
 
 class ActiveCondition(models.Model):
-    """A standing, durable fact (injury, illness, life circumstance) that should influence
-    coaching advice for as long as it's active - independent of whether today's note mentions it."""
-
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="active_conditions")
     title = models.CharField(max_length=255, help_text="e.g. 'Shin splints (left leg)'")
     description = models.TextField(blank=True, help_text="Details, cause, what to avoid, etc.")
     start_date = models.DateField()
@@ -40,13 +41,10 @@ class ActiveCondition(models.Model):
 
 
 class Workout(models.Model):
-    """A single calendar entry - either a planned/suggested session, or a completed activity
-    imported from FIT. Unifying both in one model means the AI coach only ever needs to look at
-    the calendar to know what happened and what's planned; there's no separate activity feed."""
-
     STATUS_CHOICES = [("planned", "Planned"), ("completed", "Completed"), ("skipped", "Skipped")]
     SOURCE_CHOICES = [("llm", "AI Coach"), ("manual", "Manual"), ("fit", "FIT upload")]
 
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="workouts")
     date = models.DateField()
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
@@ -54,8 +52,6 @@ class Workout(models.Model):
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="planned")
     source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default="manual")
 
-    # Populated for real completed activities (currently only via FIT upload), and/or used to
-    # express a *target* when the AI coach proposes a planned workout with specific numbers.
     distance_km = models.FloatField(null=True, blank=True)
     moving_time_min = models.FloatField(null=True, blank=True)
     avg_hr = models.FloatField(null=True, blank=True)
@@ -64,7 +60,6 @@ class Workout(models.Model):
     avg_speed_kmh = models.FloatField(null=True, blank=True)
     elevation_gain_m = models.FloatField(null=True, blank=True)
 
-    # Interval structure - either detected from a FIT file's laps, or a target set by the coach.
     interval_repeats = models.PositiveIntegerField(null=True, blank=True)
     interval_distance_m = models.FloatField(null=True, blank=True)
     interval_rest_seconds = models.FloatField(null=True, blank=True)
@@ -83,18 +78,14 @@ class Workout(models.Model):
 
 
 class AthleteProfile(models.Model):
-    """Singleton-ish profile for the single user of this app. Baselines here are optional manual
-    overrides (e.g. copied from your Zepp app's own baseline) - if left blank, the app computes a
-    rolling 30-day average from your logged metrics instead. Either way there's one source of truth
-    per metric, not two competing numbers."""
-
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile")
     hrv_baseline = models.FloatField(null=True, blank=True, help_text="ms - leave blank to auto-compute from your last 30 days")
     rhr_baseline = models.PositiveIntegerField(null=True, blank=True, help_text="bpm - leave blank to auto-compute from your last 30 days")
     max_hr = models.PositiveIntegerField(null=True, blank=True, help_text="Known max heart rate, if you have it")
     age = models.PositiveIntegerField(null=True, blank=True, help_text="Used to estimate max HR (220-age) if max HR isn't set")
 
     def __str__(self):
-        return "Athlete profile"
+        return f"Profile for {self.user.email}"
 
     def estimated_max_hr(self):
         if self.max_hr:
@@ -105,8 +96,7 @@ class AthleteProfile(models.Model):
 
 
 class Goal(models.Model):
-    """A race/event to plan training around."""
-
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="goals")
     title = models.CharField(max_length=255, help_text="e.g. 'City Marathon'")
     event_date = models.DateField()
     target_distance_km = models.FloatField(null=True, blank=True)
@@ -123,6 +113,7 @@ class Goal(models.Model):
 class ChatSession(models.Model):
     MODE_CHOICES = [("planner", "Planner (can edit calendar)"), ("ask", "Just ask (no calendar changes)")]
 
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="chat_sessions")
     title = models.CharField(max_length=255, blank=True)
     mode = models.CharField(max_length=10, choices=MODE_CHOICES, default="planner")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -137,7 +128,7 @@ class ChatSession(models.Model):
 class ChatMessage(models.Model):
     ROLE_CHOICES = [("user", "You"), ("assistant", "Coach")]
 
-    session = models.ForeignKey(ChatSession, on_delete=models.CASCADE, related_name="messages", null=True, blank=True)
+    session = models.ForeignKey(ChatSession, on_delete=models.CASCADE, related_name="messages")
     role = models.CharField(max_length=10, choices=ROLE_CHOICES)
     content = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)

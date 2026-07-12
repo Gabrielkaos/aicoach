@@ -17,6 +17,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "coach",
+    "accounts",
 ]
 
 MIDDLEWARE = [
@@ -76,7 +77,9 @@ LLM_API_BASE = os.environ.get("LLM_API_BASE", "https://api.groq.com/openai/v1")
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
 LLM_MODEL = os.environ.get("LLM_MODEL", "llama-3.3-70b-versatile")
 
-LOGIN_URL = "/admin/login/"
+# LOGIN_URL = "/admin/login/"
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "dashboard"
 LOGOUT_REDIRECT_URL = "login"
+
+AUTH_USER_MODEL = "accounts.User"

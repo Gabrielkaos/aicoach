@@ -9,15 +9,15 @@
 
     {% if form.errors %}
       <div class="mb-4 px-4 py-2 rounded-lg text-sm bg-red-100 text-red-700">
-        Incorrect username or password.
+        Incorrect email or password.
       </div>
     {% endif %}
 
     <form method="post">
       {% csrf_token %}
       <div class="mb-4">
-        <label class="block text-xs font-medium text-slate-500 mb-1" for="id_username">Username</label>
-        <input type="text" name="username" id="id_username" autofocus required
+        <label class="block text-xs font-medium text-slate-500 mb-1" for="id_username">Email</label>
+        <input type="email" name="username" id="id_username" autofocus required
           class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
       </div>
       <div class="mb-6">
@@ -30,6 +30,10 @@
         Sign in
       </button>
     </form>
+
+    <p class="text-xs text-slate-400 text-center mt-4">
+      No account? <a href="{% url 'signup' %}" class="text-emerald-600 hover:underline">Sign up</a>
+    </p>
   </div>
 </div>
 

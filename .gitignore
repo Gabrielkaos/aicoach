@@ -9,3 +9,5 @@ migrations/
 
 *.sqlite3
 aicoach/__pycache__/*
+accounts/__pycache__/*
+coach/__pycache__/*
